@@ -16,25 +16,31 @@ router.post(
 );
 router.post("/auth/login", authController.login);
 router.get("/auth/me", authMiddleware, authController.me);
+router.get("/user", authMiddleware, authController.findAll);
 
 //Iuran
-// router.post(
-//   "/iuran/create",
-//   authMiddleware,
-//   mediaMiddleware.single("proof_image_url"),
-//   iuranController.create
-// );
+router.get("/iuran", authMiddleware, iuranController.findAll);
+router.get("/iuran/my-history", authMiddleware, iuranController.getMyHistory);
+router.get(
+  "/iuran/status-summary/:period",
+  authMiddleware,
+  iuranController.getStatusSummary
+);
+router.get(
+  "/iuran/history/period/:period",
+  [authMiddleware, aclMiddleware([ROLES.BENDAHARA, ROLES.ADMIN])],
+  iuranController.getHistoryByPeriod
+);
+router.get(
+  "/iuran/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  iuranController.findOne
+);
 router.patch(
   "/iuran/:id/submit",
   [authMiddleware, aclMiddleware([ROLES.WARGA])],
   mediaMiddleware.single("proof_image_url"),
   iuranController.submitPayment
-);
-router.get("/iuran", authMiddleware, iuranController.findAll);
-router.get(
-  "/iuran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
-  iuranController.findOne
 );
 router.patch(
   "/iuran/:id/status",

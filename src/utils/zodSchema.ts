@@ -5,7 +5,7 @@ export const UserDTO = z.object({
   email: z.email().min(1, "Email is required"),
   username: z.string().min(5, "Name length min 5"),
   password: z.string().min(8, "Password length min 8"),
-  role: z.enum([ROLES.ADMIN, ROLES.RT, ROLES.RW, ROLES.SATPAM, ROLES.WARGA]),
+  role: z.enum([ROLES.ADMIN, ROLES.RT, ROLES.RW, ROLES.SATPAM, ROLES.WARGA, ROLES.BENDAHARA]),
   address: z.string().optional(),
   phone_number: z
     .string()

@@ -197,7 +197,10 @@ export default {
         return;
       }
       const { id } = req.params;
-      const { status } = req.body as { status?: IURAN_STATUS; note?: string };
+      const { status, note } = req.body as {
+        status?: IURAN_STATUS;
+        note?: string;
+      };
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid iuran id", "validation error");
@@ -218,17 +221,17 @@ export default {
 
       const now = new Date();
 
-      const result = await iuranModel.findByIdAndUpdate(
-        id,
-        {
-          status,
-          confirmed_at: now,
-          confirmed_by: bendaharaId,
-        },
-        {
-          new: true,
-        }
-      );
+      const updateData: any = {
+        status,
+        confirmed_at: now,
+        confirmed_by: bendaharaId,
+      };
+      if (note) {
+        updateData.note = note;
+      }
+      const result = await iuranModel.findByIdAndUpdate(id, updateData, {
+        new: true,
+      });
 
       if (!result) {
         response.notFound(res, "iuran not found");
@@ -236,6 +239,151 @@ export default {
       return response.success(res, result, "success to update iuran");
     } catch (error) {
       response.error(res, error, "failed to update iuran");
+      return;
+    }
+  },
+  async getMyHistory(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const wargaId = req.user?.id;
+      if (!wargaId) {
+        response.unauthorized(res, "unauthorized");
+        return;
+      }
+      const { limit = 10, page = 1, status, period, year } = req.query;
+
+      let query: QueryFilter<Iuran> = { user: new Types.ObjectId(wargaId) };
+
+      if (period) {
+        query.period = period as string;
+      } else if (year) {
+        query.period = { $regex: `^${year}`, $options: "i" };
+      }
+
+      if (status) {
+        query.status = status as string;
+      }
+
+      const result = await iuranModel
+        .find(query)
+        .populate("confirmed_by", "username")
+        .limit(+limit)
+        .skip((+page - 1) * +limit)
+        .sort({ period: 1 })
+        .lean()
+        .exec();
+
+      const count = await iuranModel.countDocuments(query);
+
+      return response.pagination(
+        res,
+        result,
+        {
+          total: count,
+          totalPages: Math.ceil(count / +limit),
+          current: +page,
+        },
+        "success get payment history"
+      );
+    } catch (error) {
+      response.error(res, error, "failed to get history");
+      return;
+    }
+  },
+  async getHistoryByPeriod(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { period } = req.params;
+      const { limit = 10, page = 1, status } = req.params;
+
+      if (!period) {
+        response.error(res, "period is required", "validation error");
+        return;
+      }
+
+      let query: QueryFilter<Iuran> = { period };
+
+      if (status) {
+        query.status = status as string;
+      }
+
+      const result = await iuranModel
+        .find(query)
+        .populate("user", "username email")
+        .populate("confirmed_by", "username")
+        .limit(+limit)
+        .skip((+page - 1) * +limit)
+        .sort({ created_at: -1 })
+        .lean()
+        .exec();
+
+      const count = await iuranModel.countDocuments(query);
+
+      // Summary statistics for the period
+      const summary = await iuranModel.aggregate([
+        { $match: { period } },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+            totalAmount: { $sum: { $toDouble: "$amount" } },
+          },
+        },
+      ]);
+
+      res.status(200).json({
+        meta: {
+          status: 200,
+          message: "success get period history",
+        },
+        data: {
+          payments: result,
+          summary,
+        },
+        pagination: {
+          total: count,
+          totalPages: Math.ceil(count / +limit),
+          current: +page,
+        },
+      });
+    } catch (error) {
+      response.error(res, error, "failed to get period history");
+      return;
+    }
+  },
+  async getStatusSummary(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { period } = req.params;
+
+      if (!period) {
+        response.error(res, "period is required", "validation error");
+        return;
+      }
+
+      const statusCounts = await iuranModel.aggregate([
+        { $match: { period } },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const summary = {
+        paid: 0,
+        pending: 0,
+        rejected: 0,
+        unpaid: 0,
+      };
+
+      statusCounts.forEach((item) => {
+        if (item._id in summary) {
+          summary[item._id as keyof typeof summary] = item.count;
+        }
+      });
+
+      return response.success(res, summary, "success get status summary");
+    } catch (error) {
+      response.error(res, error, "failed to get status summary");
       return;
     }
   },
