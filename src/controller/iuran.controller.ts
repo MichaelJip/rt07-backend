@@ -55,9 +55,14 @@ export default {
         query.period = period as string;
       }
 
-      // Filter by status
+      // Filter by status (single or multiple comma-separated values)
       if (status) {
-        query.status = status as string;
+        const statusArray = (status as string).split(',').map(s => s.trim());
+        if (statusArray.length === 1) {
+          query.status = statusArray[0];
+        } else {
+          query.status = { $in: statusArray };
+        }
       }
 
       // Search by period (if no exact period filter)

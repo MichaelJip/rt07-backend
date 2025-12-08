@@ -1,24 +1,8 @@
 import multer from "multer";
 import path from "path";
-import fs from "fs";
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    let uploadPath = "uploads/";
-
-    if (file.fieldname === "image_url") {
-      uploadPath = "uploads/profile/";
-    } else if (file.fieldname === "proof_image_url") {
-      const period = req.body.period || new Date().toISOString().slice(0, 7); // e.g., "2025-01"
-      uploadPath = `uploads/payments/${period}/`;
-    }
-
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-
-    cb(null, uploadPath);
-  },
+  destination: "uploads/",
   filename: (req, file, cb) => {
     const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, unique + path.extname(file.originalname));
