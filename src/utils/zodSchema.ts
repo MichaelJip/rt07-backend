@@ -30,7 +30,7 @@ export const IuranDTO = z.object({
   period: z.string(),
   amount: z.string(),
   status: z.string(),
-  proof_image_url: z.string(),
+  proof_image_url: z.string().optional().nullable(),
   note: z.string().optional().nullable(),
   submitted_at: z.string().optional().nullable(),
   confirmed_at: z.string().optional().nullable(),

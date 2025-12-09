@@ -48,7 +48,6 @@ const iuranSchema = new Schema(
     },
     proof_image_url: {
       type: Schema.Types.String,
-      required: true,
     },
     note: {
       type: Schema.Types.String,
