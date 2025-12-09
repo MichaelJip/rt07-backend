@@ -103,25 +103,47 @@ export default {
     try {
       const { limit = 10, page = 1, search } = req.query;
 
-      let query: QueryFilter<User> = {};
+      let query: QueryFilter<User> = {
+        role: { $ne: "admin" }, // Filter out admin users
+      };
 
       if (search && typeof search === "string") {
         query.$text = { $search: search };
       }
 
-      const result = await userModel
+      // Define role priority order
+      const rolePriority: Record<string, number> = {
+        rt: 1,
+        rw: 2,
+        bendahara: 3,
+        satpam: 4,
+        warga: 5,
+      };
+
+      // Fetch all matching documents (we need to sort in-memory)
+      const allResults = await userModel
         .find(query)
-        .limit(+limit)
-        .skip((+page - 1) * +limit)
-        .sort({ created_at: -1 })
         .lean()
         .exec();
 
-      const count = await userModel.countDocuments(query);
+      // Sort by role priority
+      const sortedResults = allResults.sort((a, b) => {
+        const priorityA = rolePriority[a.role] || 999;
+        const priorityB = rolePriority[b.role] || 999;
+        return priorityA - priorityB;
+      });
+
+      // Apply pagination after sorting
+      const paginatedResult = sortedResults.slice(
+        (+page - 1) * +limit,
+        +page * +limit
+      );
+
+      const count = sortedResults.length;
 
       return response.pagination(
         res,
-        result,
+        paginatedResult,
         {
           total: count,
           totalPages: Math.ceil(count / +limit),

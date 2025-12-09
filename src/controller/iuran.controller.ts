@@ -5,6 +5,8 @@ import { IURAN_STATUS } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import { IuranSubmitWargaDTO } from "../utils/zodSchema";
+import path from "path";
+import fs from "fs";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -57,7 +59,7 @@ export default {
 
       // Filter by status (single or multiple comma-separated values)
       if (status) {
-        const statusArray = (status as string).split(',').map(s => s.trim());
+        const statusArray = (status as string).split(",").map((s) => s.trim());
         if (statusArray.length === 1) {
           query.status = statusArray[0];
         } else {
@@ -171,6 +173,17 @@ export default {
         return;
       }
 
+      if (iuran.proof_image_url) {
+        const oldImagePath = path.join(
+          __dirname,
+          "../../",
+          iuran.proof_image_url
+        );
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+
       // Update with proof image
       const image_url = `/uploads/${file.filename}`;
 
@@ -270,10 +283,11 @@ export default {
 
       const result = await iuranModel
         .find(query)
+        .populate("user", "username")
         .populate("confirmed_by", "username")
         .limit(+limit)
         .skip((+page - 1) * +limit)
-        .sort({ period: 1 })
+        .sort({ period: -1 })
         .lean()
         .exec();
 
