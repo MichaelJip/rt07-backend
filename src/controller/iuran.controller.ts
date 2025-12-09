@@ -279,7 +279,12 @@ export default {
       }
 
       if (status) {
-        query.status = status as string;
+        const statusArray = (status as string).split(",").map((s) => s.trim());
+        if (statusArray.length === 1) {
+          query.status = statusArray[0];
+        } else {
+          query.status = { $in: statusArray };
+        }
       }
 
       const result = await iuranModel
