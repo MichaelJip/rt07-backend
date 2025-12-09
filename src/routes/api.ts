@@ -21,6 +21,11 @@ router.get("/user", authMiddleware, authController.findAll);
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);
 router.get("/iuran/my-history", authMiddleware, iuranController.getMyHistory);
+router.post(
+  "/iuran/generate-monthly",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  iuranController.generateMonthlyIuran
+);
 router.get(
   "/iuran/status-summary/:period",
   authMiddleware,
@@ -47,5 +52,7 @@ router.patch(
   [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
   iuranController.updateStatus
 );
+
+
 
 export default router;

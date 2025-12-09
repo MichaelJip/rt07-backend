@@ -1,0 +1,482 @@
+================================================================================
+VPS DEPLOYMENT GUIDE - RT BACKEND
+Step-by-step guide to deploy Node.js/TypeScript backend to a fresh VPS
+================================================================================
+
+PREREQUISITES:
+- VPS server (Ubuntu 20.04 or later)
+- Domain name pointed to VPS IP (A record)
+- SSH key set up
+- GitHub repository with your code
+
+================================================================================
+STEP 1: CONNECT TO VPS
+================================================================================
+
+ssh username@YOUR_VPS_IP
+
+================================================================================
+STEP 2: UPDATE SYSTEM
+================================================================================
+
+sudo apt update && sudo apt upgrade -y
+
+Press Enter when prompted about services to restart (select OK)
+
+================================================================================
+STEP 3: INSTALL NODE.JS 20 (LTS)
+================================================================================
+
+# Remove old Node.js if exists
+sudo apt remove nodejs -y
+
+# Install Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify installation
+node --version    # Should show v20.x.x
+npm --version     # Should show 10.x.x
+
+================================================================================
+STEP 4: INSTALL PM2 (PROCESS MANAGER)
+================================================================================
+
+sudo npm install -g pm2
+
+# Verify
+pm2 --version
+
+================================================================================
+STEP 5: INSTALL GIT
+================================================================================
+
+sudo apt install -y git
+
+# Verify
+git --version
+
+================================================================================
+STEP 6: INSTALL MONGODB
+================================================================================
+
+# Import MongoDB public key
+wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
+
+# Add MongoDB repository
+echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+# Update and install
+sudo apt update
+sudo apt install -y mongodb-org
+
+# Start MongoDB
+sudo systemctl start mongod
+sudo systemctl enable mongod
+
+# Verify MongoDB is running
+sudo systemctl status mongod
+# Press 'q' to exit
+
+================================================================================
+STEP 7: CREATE APPLICATION DIRECTORY
+================================================================================
+
+sudo mkdir -p /var/www
+sudo chown -R $USER:$USER /var/www
+cd /var/www
+
+================================================================================
+STEP 8: CLONE YOUR REPOSITORY
+================================================================================
+
+# If repository is PUBLIC:
+git clone https://github.com/YOUR-USERNAME/rt-backend.git
+
+# If repository is PRIVATE (use Personal Access Token):
+git clone https://YOUR_TOKEN@github.com/YOUR-USERNAME/rt-backend.git
+
+# Navigate to project
+cd rt-backend
+
+# OR use the actual folder name (e.g., rt07-backend)
+cd YOUR_PROJECT_FOLDER_NAME
+
+================================================================================
+STEP 9: CREATE ENVIRONMENT FILE
+================================================================================
+
+nano .env
+
+Paste this content (replace SECRET with a random string):
+
+DATABASE_URL=mongodb://localhost:27017/rt-database
+SECRET=your-super-secret-random-key-change-this
+
+Save: CTRL+X, then Y, then Enter
+
+================================================================================
+STEP 10: INSTALL DEPENDENCIES AND BUILD
+================================================================================
+
+# Install dependencies
+npm install
+
+# Build TypeScript
+npm run build
+
+# Create necessary directories
+mkdir -p logs uploads
+
+================================================================================
+STEP 11: START APPLICATION WITH PM2
+================================================================================
+
+# Start the app
+pm2 start ecosystem.config.js --env production
+
+# Save PM2 configuration
+pm2 save
+
+# Set PM2 to start on boot
+pm2 startup
+# Copy and run the command it shows you
+
+# Verify app is running
+pm2 status
+
+# Check logs
+pm2 logs rt-backend --lines 20
+
+# You should see:
+# - "database status: Database connected!"
+# - "Server is up at PORT 3000"
+
+================================================================================
+STEP 12: CONFIGURE FIREWALL
+================================================================================
+
+# Allow SSH (important!)
+sudo ufw allow OpenSSH
+
+# Allow HTTP and HTTPS
+sudo ufw allow 'Nginx Full'
+
+# Enable firewall
+sudo ufw enable
+# Type 'y' and press Enter
+
+================================================================================
+STEP 13: INSTALL NGINX (REVERSE PROXY)
+================================================================================
+
+sudo apt update
+sudo apt install -y nginx
+
+# Start Nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+================================================================================
+STEP 14: CONFIGURE NGINX FOR YOUR DOMAIN
+================================================================================
+
+# Create Nginx configuration
+sudo nano /etc/nginx/sites-available/rt-backend
+
+Paste this (REPLACE YOUR_DOMAIN with your actual domain):
+
+server {
+    listen 80;
+    server_name YOUR_DOMAIN;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /uploads {
+        alias /var/www/rt-backend/uploads;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+Save: CTRL+X, then Y, then Enter
+
+Example domain: api.example.com or rt07-api.michaeljip.com
+
+================================================================================
+STEP 15: ENABLE NGINX SITE
+================================================================================
+
+# Enable the site
+sudo ln -s /etc/nginx/sites-available/rt-backend /etc/nginx/sites-enabled/
+
+# Remove default site
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Test Nginx configuration
+sudo nginx -t
+# Should say "syntax is ok" and "test is successful"
+
+# Reload Nginx
+sudo systemctl reload nginx
+
+================================================================================
+STEP 16: INSTALL SSL CERTIFICATE (HTTPS)
+================================================================================
+
+# Install Certbot
+sudo apt install -y certbot python3-certbot-nginx
+
+# Get SSL certificate (REPLACE YOUR_DOMAIN)
+sudo certbot --nginx -d YOUR_DOMAIN
+
+When prompted:
+1. Enter your email address
+2. Agree to Terms of Service: Y
+3. Share email with EFF: N (or Y, your choice)
+4. Certbot will automatically configure HTTPS
+
+# Certificate will auto-renew. To test renewal:
+sudo certbot renew --dry-run
+
+================================================================================
+STEP 17: VERIFY DEPLOYMENT
+================================================================================
+
+Open your browser and visit:
+
+https://YOUR_DOMAIN
+
+You should see:
+{"message":"server is up","data":null}
+
+Check for the lock icon (🔒) in the browser - this means HTTPS is working!
+
+================================================================================
+USEFUL PM2 COMMANDS
+================================================================================
+
+pm2 status              # Check app status
+pm2 logs rt-backend     # View logs in real-time
+pm2 restart rt-backend  # Restart the app
+pm2 stop rt-backend     # Stop the app
+pm2 delete rt-backend   # Remove app from PM2
+pm2 monit               # Monitor resources
+
+================================================================================
+FUTURE DEPLOYMENTS (UPDATES)
+================================================================================
+
+When you update your code on GitHub:
+
+1. SSH into your VPS:
+   ssh username@YOUR_VPS_IP
+
+2. Navigate to project:
+   cd /var/www/rt-backend
+
+3. Run deployment script:
+   chmod +x deploy.sh  # First time only
+   ./deploy.sh
+
+This automatically:
+- Pulls latest code from GitHub
+- Installs dependencies
+- Builds TypeScript
+- Restarts PM2
+
+Alternatively, manual deployment:
+
+cd /var/www/rt-backend
+git pull origin main
+npm install
+npm run build
+pm2 restart ecosystem.config.js --env production
+
+================================================================================
+MONGODB COMPASS CONNECTION (FROM YOUR LOCAL MACHINE)
+================================================================================
+
+Option 1: SSH Tunnel (Recommended - More Secure)
+
+In MongoDB Compass:
+1. Click "New Connection"
+2. Connection String: mongodb://localhost:27017/rt-database
+3. Go to "Advanced Connection Options" > "Proxy/SSH" tab
+4. Select "SSH with Identity File"
+5. SSH Hostname: YOUR_VPS_IP
+6. SSH Port: 22
+7. SSH Username: YOUR_USERNAME
+8. SSH Identity File: Browse to your SSH key (e.g., C:\Users\username\.ssh\id_ed25519)
+9. Click "Connect"
+
+Option 2: Direct Connection (Less Secure - Not Recommended)
+
+Only use if you need direct access and understand security implications.
+
+On VPS:
+sudo nano /etc/mongod.conf
+
+Change bindIp to:
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+Restart MongoDB:
+sudo systemctl restart mongod
+sudo ufw allow 27017/tcp
+
+In MongoDB Compass:
+mongodb://YOUR_VPS_IP:27017/rt-database
+
+⚠️ WARNING: This exposes MongoDB to the internet. Use MongoDB authentication!
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+App won't start:
+- Check logs: pm2 logs rt-backend
+- Check MongoDB: sudo systemctl status mongod
+- Check .env file exists: cat .env
+- Check build directory: ls -la dist/
+
+Port already in use:
+sudo lsof -i :3000
+sudo kill -9 <PID>
+
+MongoDB connection issues:
+sudo systemctl restart mongod
+sudo tail -f /var/log/mongodb/mongod.log
+
+Nginx issues:
+sudo nginx -t
+sudo systemctl status nginx
+sudo tail -f /var/log/nginx/error.log
+
+SSL certificate issues:
+sudo certbot certificates
+sudo certbot renew
+
+Permission issues:
+sudo chown -R $USER:$USER /var/www/rt-backend
+chmod -R 755 uploads/
+
+Can't connect via domain:
+- Check DNS propagation: ping YOUR_DOMAIN
+- Check firewall: sudo ufw status
+- Check Nginx is running: sudo systemctl status nginx
+
+================================================================================
+IMPORTANT FILES & DIRECTORIES
+================================================================================
+
+/var/www/rt-backend/              # Your application
+/var/www/rt-backend/.env          # Environment variables (NEVER commit to Git!)
+/var/www/rt-backend/dist/         # Compiled JavaScript (built from src/)
+/var/www/rt-backend/logs/         # Application logs
+/var/www/rt-backend/uploads/      # Uploaded files
+
+/etc/nginx/sites-available/       # Nginx configurations
+/etc/nginx/sites-enabled/         # Active Nginx configurations
+
+/etc/letsencrypt/live/            # SSL certificates
+
+~/.pm2/logs/                      # PM2 logs
+~/.pm2/dump.pm2                   # PM2 saved processes
+
+================================================================================
+SECURITY CHECKLIST
+================================================================================
+
+✅ Use SSH keys (not passwords)
+✅ Enable firewall (ufw)
+✅ Use HTTPS (SSL certificate)
+✅ Keep .env file secure (never commit to Git)
+✅ Use strong SECRET in .env
+✅ Keep system updated: sudo apt update && sudo apt upgrade
+✅ Use MongoDB authentication for production
+✅ Limit SSH access to specific IPs (if possible)
+✅ Regular backups of database and code
+
+================================================================================
+BACKUP MONGODB
+================================================================================
+
+Create backup:
+mongodump --db rt-database --out /backup/$(date +%Y%m%d)
+
+Restore backup:
+mongorestore --db rt-database /backup/20231201/rt-database
+
+Automate daily backups (crontab):
+crontab -e
+
+Add this line (backup every day at 2 AM):
+0 2 * * * mongodump --db rt-database --out /backup/$(date +\%Y\%m\%d)
+
+================================================================================
+COMMON PORT NUMBERS
+================================================================================
+
+22   - SSH
+80   - HTTP
+443  - HTTPS
+3000 - Your Node.js app (internal only, proxied by Nginx)
+27017 - MongoDB (internal only, or SSH tunnel)
+
+================================================================================
+ENVIRONMENT VARIABLES REFERENCE
+================================================================================
+
+DATABASE_URL - MongoDB connection string
+  Local: mongodb://localhost:27017/rt-database
+  Atlas: mongodb+srv://username:password@cluster.mongodb.net/database
+
+SECRET - JWT secret key for authentication
+  Should be a long random string
+  Example: rt-secret-key-2024-random-string-here
+
+PORT (optional) - Server port (default: 3000)
+NODE_ENV (set by PM2) - production or development
+
+================================================================================
+USEFUL LINUX COMMANDS
+================================================================================
+
+ls -la          # List files (including hidden)
+pwd             # Print current directory
+cd ~            # Go to home directory
+nano filename   # Edit file
+cat filename    # View file contents
+rm filename     # Delete file
+rm -rf folder/  # Delete folder
+mkdir folder    # Create folder
+sudo systemctl status SERVICE   # Check service status
+sudo systemctl restart SERVICE  # Restart service
+df -h           # Check disk space
+free -h         # Check memory usage
+top             # View running processes (press 'q' to exit)
+
+================================================================================
+END OF GUIDE
+================================================================================
+
+For more help:
+- PM2 docs: https://pm2.keymetrics.io/docs/
+- Nginx docs: https://nginx.org/en/docs/
+- MongoDB docs: https://docs.mongodb.com/
+- Let's Encrypt: https://letsencrypt.org/
+
+Created: December 9, 2025
+Last Updated: December 9, 2025

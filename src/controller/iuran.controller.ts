@@ -1,12 +1,13 @@
 import { Response } from "express";
 import mongoose, { QueryFilter, Types } from "mongoose";
 import iuranModel, { Iuran } from "../models/iuran.model";
-import { IURAN_STATUS } from "../utils/constants";
+import { IURAN_STATUS, ROLES } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import { IuranSubmitWargaDTO } from "../utils/zodSchema";
 import path from "path";
 import fs from "fs";
+import userModel from "../models/user.model";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -403,6 +404,73 @@ export default {
       return response.success(res, summary, "success get status summary");
     } catch (error) {
       response.error(res, error, "failed to get status summary");
+      return;
+    }
+  },
+  // TODO: Remove this method after testing/demo - manual trigger for monthly iuran generation
+  async generateMonthlyIuran(req: IReqUser, res: Response): Promise<void> {
+    try {
+      console.log("Manually creating monthly iuran for WARGA...");
+
+      // Get current period (YYYY-MM format)
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const period = `${year}-${month}`;
+
+      // Find all WARGA users
+      const wargaUsers = await userModel
+        .find({
+          role: ROLES.WARGA,
+        })
+        .select("_id username");
+
+      console.log(`Found ${wargaUsers.length} warga users`);
+
+      let createdCount = 0;
+      let skippedCount = 0;
+
+      // Create iuran for each warga
+      for (const user of wargaUsers) {
+        const exists = await iuranModel.findOne({
+          user: user._id,
+          period: period,
+        });
+
+        // Only create if doesn't exist
+        if (!exists) {
+          await iuranModel.create({
+            user: user._id,
+            period: period,
+            amount: "50000",
+            status: IURAN_STATUS.UNPAID,
+            submitted_at: null,
+            confirmed_at: null,
+            confirmed_by: null,
+          });
+          createdCount++;
+        } else {
+          skippedCount++;
+        }
+      }
+
+      console.log(
+        `Monthly iuran generation complete. Created: ${createdCount}, Skipped (already exists): ${skippedCount}`
+      );
+
+      return response.success(
+        res,
+        {
+          period,
+          totalWarga: wargaUsers.length,
+          created: createdCount,
+          skipped: skippedCount,
+        },
+        "Monthly iuran generated successfully"
+      );
+    } catch (error) {
+      console.error("Error generating monthly iuran:", error);
+      response.error(res, error, "failed to generate monthly iuran");
       return;
     }
   },
