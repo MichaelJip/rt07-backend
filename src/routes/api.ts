@@ -16,6 +16,7 @@ router.post(
 );
 router.post("/auth/login", authController.login);
 router.get("/auth/me", authMiddleware, authController.me);
+router.post("/auth/push-token", authMiddleware, authController.updatePushToken);
 router.get("/user", authMiddleware, authController.findAll);
 
 //Iuran

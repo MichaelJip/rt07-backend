@@ -1,5 +1,5 @@
 import { Response, Request } from "express";
-import { UserDTO, UserLoginDTO } from "../utils/zodSchema";
+import { UserDTO, UserLoginDTO, PushTokenDTO } from "../utils/zodSchema";
 import userModel, { User } from "../models/user.model";
 import response from "../utils/response";
 import { encrypt } from "../utils/encryption";
@@ -121,10 +121,7 @@ export default {
       };
 
       // Fetch all matching documents (we need to sort in-memory)
-      const allResults = await userModel
-        .find(query)
-        .lean()
-        .exec();
+      const allResults = await userModel.find(query).lean().exec();
 
       // Sort by role priority
       const sortedResults = allResults.sort((a, b) => {
@@ -153,6 +150,42 @@ export default {
       );
     } catch (error) {
       response.error(res, error, "failed to find all user");
+      return;
+    }
+  },
+  async updatePushToken(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        response.unauthorized(res, "unauthorized");
+        return;
+      }
+
+      const { pushToken } = req.body;
+
+      const parsed = PushTokenDTO.safeParse({ pushToken });
+
+      if (!parsed.success) {
+        response.error(res, parsed.error, "validation error");
+        return;
+      }
+
+      const result = await userModel
+        .findByIdAndUpdate(
+          userId,
+          { expoPushToken: parsed.data.pushToken },
+          { new: true }
+        )
+        .select("-password");
+
+      if (!result) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      return response.success(res, result, "push token updated successfully");
+    } catch (error) {
+      response.error(res, error, "failed to update push token");
       return;
     }
   },

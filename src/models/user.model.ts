@@ -44,6 +44,10 @@ const userSchema = new Schema(
     image_url: {
       type: Schema.Types.String,
     },
+    expoPushToken: {
+      type: Schema.Types.String,
+      default: null,
+    },
   },
   {
     timestamps: true,

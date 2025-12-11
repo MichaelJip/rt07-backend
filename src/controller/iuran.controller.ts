@@ -8,6 +8,7 @@ import { IuranSubmitWargaDTO } from "../utils/zodSchema";
 import path from "path";
 import fs from "fs";
 import userModel from "../models/user.model";
+import notificationService from "../utils/notification.service";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -248,13 +249,45 @@ export default {
       if (note) {
         updateData.note = note;
       }
-      const result = await iuranModel.findByIdAndUpdate(id, updateData, {
-        new: true,
-      });
+      const result = await iuranModel
+        .findByIdAndUpdate(id, updateData, {
+          new: true,
+        })
+        .populate("user", "username");
 
       if (!result) {
         response.notFound(res, "iuran not found");
+        return;
       }
+
+      // Send push notification to the user
+      if (status === IURAN_STATUS.PAID) {
+        await notificationService.sendToUser(result.user._id, {
+          title: "Pembayaran berhasil! ✅",
+          body: `Pembayaran anda untuk periode ${result.period} sudah dikonfirmasi.`,
+          data: {
+            type: "iuran_status_update",
+            iuranId: result._id.toString(),
+            status: IURAN_STATUS.PAID,
+            period: result.period,
+          },
+        });
+      } else if (status === IURAN_STATUS.REJECTED) {
+        await notificationService.sendToUser(result.user._id, {
+          title: "Pembayaran gagal ❌",
+          body: note
+            ? `Pembayaran anda untuk periode ${result.period} ditolak. Karena: ${note}`
+            : `Pembayaran anda untuk periode ${result.period} ditolak. tolong untuk coba kembali.`,
+          data: {
+            type: "iuran_status_update",
+            iuranId: result._id.toString(),
+            status: IURAN_STATUS.REJECTED,
+            period: result.period,
+            note: note || "",
+          },
+        });
+      }
+
       return response.success(res, result, "success to update iuran");
     } catch (error) {
       response.error(res, error, "failed to update iuran");
@@ -462,6 +495,18 @@ export default {
       console.log(
         `Monthly iuran generation complete. Created: ${createdCount}, Skipped (already exists): ${skippedCount}`
       );
+
+      // Send notification to all WARGA users about new iuran
+      if (createdCount > 0) {
+        await notificationService.sendToRole(ROLES.WARGA, {
+          title: "New Monthly Payment Due 📋",
+          body: `Your monthly iuran for ${period} is now available. Please submit your payment.`,
+          data: {
+            type: "new_iuran",
+            period: period,
+          },
+        });
+      }
 
       return response.success(
         res,

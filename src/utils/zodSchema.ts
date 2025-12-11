@@ -41,3 +41,7 @@ export const IuranSubmitWargaDTO = z.object({
   period: z.string().min(1, "Period date is required"),
   amount: z.string().min(1, "Amount is required"),
 });
+
+export const PushTokenDTO = z.object({
+  pushToken: z.string().min(1, "Push token is required"),
+});
