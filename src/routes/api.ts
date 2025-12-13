@@ -1,6 +1,7 @@
 import express from "express";
 import authController from "../controller/auth.controller";
 import iuranController from "../controller/iuran.controller";
+import keuanganController from "../controller/keuangan.controller";
 import aclMiddleware from "../middleware/acl.middleware";
 import authMiddleware from "../middleware/auth.middleware";
 import mediaMiddleware from "../middleware/media.middleware";
@@ -34,12 +35,12 @@ router.get(
 );
 router.get(
   "/iuran/history/period/:period",
-  [authMiddleware, aclMiddleware([ROLES.BENDAHARA, ROLES.ADMIN])],
+  [authMiddleware, aclMiddleware([ROLES.BENDAHARA, ROLES.ADMIN, ROLES.RT])],
   iuranController.getHistoryByPeriod
 );
 router.get(
   "/iuran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT])],
   iuranController.findOne
 );
 router.patch(
@@ -54,6 +55,39 @@ router.patch(
   iuranController.updateStatus
 );
 
+// Laporan Keuangan (Financial Report)
+router.get(
+  "/keuangan/laporan",
+  authMiddleware,
+  keuanganController.getLaporanKeuangan
+);
 
+// Pengeluaran (Expenses)
+router.post(
+  "/pengeluaran",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  mediaMiddleware.any(),
+  keuanganController.createPengeluaran
+);
+router.get(
+  "/pengeluaran",
+  authMiddleware,
+  keuanganController.getAllPengeluaran
+);
+router.get(
+  "/pengeluaran/:id",
+  authMiddleware,
+  keuanganController.getPengeluaranById
+);
+router.patch(
+  "/pengeluaran/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  keuanganController.updatePengeluaran
+);
+router.delete(
+  "/pengeluaran/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  keuanganController.deletePengeluaran
+);
 
 export default router;

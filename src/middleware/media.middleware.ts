@@ -18,4 +18,10 @@ export default {
   single(fieldName: string) {
     return upload.single(fieldName);
   },
+  array(fieldName: string, maxCount?: number) {
+    return upload.array(fieldName, maxCount);
+  },
+  any() {
+    return upload.any();
+  },
 };

@@ -445,10 +445,10 @@ export default {
       return;
     }
   },
-  // TODO: Remove this method after testing/demo - manual trigger for monthly iuran generation
+  // Generate monthly iuran for all users except ADMIN
   async generateMonthlyIuran(req: IReqUser, res: Response): Promise<void> {
     try {
-      console.log("Manually creating monthly iuran for WARGA...");
+      console.log("Creating monthly iuran for all users except ADMIN...");
 
       // Get current period (YYYY-MM format)
       const now = new Date();
@@ -456,20 +456,20 @@ export default {
       const month = String(now.getMonth() + 1).padStart(2, "0");
       const period = `${year}-${month}`;
 
-      // Find all WARGA users
-      const wargaUsers = await userModel
+      // Find all users EXCEPT ADMIN
+      const users = await userModel
         .find({
-          role: ROLES.WARGA,
+          role: { $ne: ROLES.ADMIN },
         })
-        .select("_id username");
+        .select("_id username role");
 
-      console.log(`Found ${wargaUsers.length} warga users`);
+      console.log(`Found ${users.length} users (excluding ADMIN)`);
 
       let createdCount = 0;
       let skippedCount = 0;
 
-      // Create iuran for each warga
-      for (const user of wargaUsers) {
+      // Create iuran for each user
+      for (const user of users) {
         const exists = await iuranModel.findOne({
           user: user._id,
           period: period,
@@ -496,23 +496,34 @@ export default {
         `Monthly iuran generation complete. Created: ${createdCount}, Skipped (already exists): ${skippedCount}`
       );
 
-      // Send notification to all WARGA users about new iuran
+      // Send notification to all non-ADMIN users about new iuran
       if (createdCount > 0) {
-        await notificationService.sendToRole(ROLES.WARGA, {
-          title: "New Monthly Payment Due 📋",
-          body: `Your monthly iuran for ${period} is now available. Please submit your payment.`,
-          data: {
-            type: "new_iuran",
-            period: period,
-          },
-        });
+        // Send to each role except ADMIN
+        const nonAdminRoles = [
+          ROLES.RT,
+          ROLES.RW,
+          ROLES.BENDAHARA,
+          ROLES.SATPAM,
+          ROLES.WARGA,
+        ];
+
+        for (const role of nonAdminRoles) {
+          await notificationService.sendToRole(role, {
+            title: "New Monthly Payment Due 📋",
+            body: `Your monthly iuran for ${period} is now available. Please submit your payment.`,
+            data: {
+              type: "new_iuran",
+              period: period,
+            },
+          });
+        }
       }
 
       return response.success(
         res,
         {
           period,
-          totalWarga: wargaUsers.length,
+          totalUsers: users.length,
           created: createdCount,
           skipped: skippedCount,
         },

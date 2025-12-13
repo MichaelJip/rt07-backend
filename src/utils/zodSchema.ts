@@ -7,6 +7,7 @@ export const UserDTO = z.object({
   password: z.string().min(8, "Password length min 8"),
   role: z.enum([ROLES.ADMIN, ROLES.RT, ROLES.RW, ROLES.SATPAM, ROLES.WARGA, ROLES.BENDAHARA]),
   address: z.string().optional(),
+  position: z.string().optional(),
   phone_number: z
     .string()
     .regex(/^[0-9]+$/, "Phone number must contain only numbers")

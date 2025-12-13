@@ -9,7 +9,8 @@ import { QueryFilter } from "mongoose";
 
 export default {
   async register(req: Request, res: Response): Promise<void> {
-    const { email, username, password, role, address, phone_number } = req.body;
+    const { email, username, password, role, address, phone_number, position } =
+      req.body;
     const image_url = req.file ? `/uploads/${req.file.filename}` : "";
 
     const parsed = UserDTO.safeParse({
@@ -18,6 +19,7 @@ export default {
       password,
       role,
       address,
+      position,
       phone_number,
       image_url,
     });

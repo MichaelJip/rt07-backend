@@ -30,10 +30,20 @@ const userSchema = new Schema(
     },
     role: {
       type: Schema.Types.String,
-      enum: [ROLES.ADMIN, ROLES.RT, ROLES.RW, ROLES.BENDAHARA, ROLES.SATPAM, ROLES.WARGA],
+      enum: [
+        ROLES.ADMIN,
+        ROLES.RT,
+        ROLES.RW,
+        ROLES.BENDAHARA,
+        ROLES.SATPAM,
+        ROLES.WARGA,
+      ],
       default: ROLES.WARGA,
     },
     address: {
+      type: Schema.Types.String,
+    },
+    position: {
       type: Schema.Types.String,
     },
     phone_number: {

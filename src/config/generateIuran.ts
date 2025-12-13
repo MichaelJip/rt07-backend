@@ -12,23 +12,25 @@ function getCurrentPeriod(): string {
 }
 
 export function startMonthlyIuranGeneration() {
-  cron.schedule("0 0 28 * *", async () => {
+  // Run on 1st of every month at 00:01 AM
+  cron.schedule("1 0 1 * *", async () => {
     try {
-      console.log("Creating monthly iuran for WARGA...");
+      console.log("Creating monthly iuran for all users except ADMIN...");
 
       const period = getCurrentPeriod();
 
-      const wargaUsers = await userModel
+      // Find all users EXCEPT ADMIN
+      const users = await userModel
         .find({
-          role: ROLES.WARGA,
+          role: { $ne: ROLES.ADMIN },
         })
-        .select("_id");
+        .select("_id role");
 
-      console.log(`Found ${wargaUsers.length} warga users`);
+      console.log(`Found ${users.length} users (excluding ADMIN)`);
 
       let createdCount = 0;
 
-      for (const user of wargaUsers) {
+      for (const user of users) {
         const exists = await iuranModel.findOne({
           user: user._id,
           period: period,
@@ -49,22 +51,34 @@ export function startMonthlyIuranGeneration() {
         }
       }
 
-      console.log(`Monthly iuran created for ${createdCount} warga!`);
+      console.log(`Monthly iuran created for ${createdCount} users!`);
 
-      // Send push notification to all WARGA users about new iuran
+      // Send push notification to all non-ADMIN users about new iuran
       if (createdCount > 0) {
-        await notificationService.sendToRole(ROLES.WARGA, {
-          title: "Iuran Bulanan Baru 📋",
-          body: `Iuran bulanan untuk periode ${period} sudah tersedia. Silahkan lakukan pembayaran.`,
-          data: {
-            type: "new_iuran",
-            period: period,
-          },
-        });
-        console.log(`Push notifications sent to all WARGA users`);
+        const nonAdminRoles = [
+          ROLES.RT,
+          ROLES.RW,
+          ROLES.BENDAHARA,
+          ROLES.SATPAM,
+          ROLES.WARGA,
+        ];
+
+        for (const role of nonAdminRoles) {
+          await notificationService.sendToRole(role, {
+            title: "Iuran Bulanan Baru 📋",
+            body: `Iuran bulanan untuk periode ${period} sudah tersedia. Silahkan lakukan pembayaran.`,
+            data: {
+              type: "new_iuran",
+              period: period,
+            },
+          });
+        }
+        console.log(`Push notifications sent to all non-ADMIN users`);
       }
     } catch (error) {
       console.error("Error creating monthly iuran:", error);
     }
   });
+
+  console.log("Monthly iuran generation scheduled: 1st of every month at 00:01 AM");
 }
