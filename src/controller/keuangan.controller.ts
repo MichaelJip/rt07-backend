@@ -6,9 +6,7 @@ import { IURAN_STATUS } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 
-// Helper function to calculate current balance
 async function getCurrentBalance(): Promise<number> {
-  // Calculate total income from all PAID iuran
   const totalIncomeResult = await iuranModel.aggregate([
     {
       $match: {
@@ -26,7 +24,6 @@ async function getCurrentBalance(): Promise<number> {
   const totalIncome =
     totalIncomeResult.length > 0 ? totalIncomeResult[0].total : 0;
 
-  // Calculate total expenses from all pengeluaran
   const totalExpenseResult = await pengeluaranModel.aggregate([
     {
       $group: {
@@ -39,17 +36,14 @@ async function getCurrentBalance(): Promise<number> {
   const totalExpense =
     totalExpenseResult.length > 0 ? totalExpenseResult[0].total : 0;
 
-  // Return current balance
   return totalIncome - totalExpense;
 }
 
 export default {
-  // Get financial report - total balance from all iuran minus all expenses
   async getLaporanKeuangan(req: IReqUser, res: Response): Promise<void> {
     try {
       const balance = await getCurrentBalance();
 
-      // Get total income and expenses for the response
       const totalIncomeResult = await iuranModel.aggregate([
         {
           $match: {
@@ -94,7 +88,6 @@ export default {
     }
   },
 
-  // Create new expense entry
   async createPengeluaran(req: IReqUser, res: Response): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -104,9 +97,8 @@ export default {
       }
 
       const { title, total } = req.body;
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const files = req.files as Express.Multer.File[];
 
-      // Validate required fields
       if (!title || !total) {
         response.error(
           res,
@@ -116,40 +108,64 @@ export default {
         return;
       }
 
-      // Build items array from form fields
-      const items = [];
-      let itemIndex = 0;
+      // Check if items are already parsed as array (from form-data)
+      let items = [];
+      if (Array.isArray(req.body.items)) {
+        // Items are already parsed as array
+        items = req.body.items.map((item: any, index: number) => {
+          if (!item.name || item.price === undefined || item.price === null) {
+            throw new Error(`Item ${index} must have name and price`);
+          }
 
-      // Loop through all possible items (items[0], items[1], etc.)
-      while (req.body[`items[${itemIndex}][name]`]) {
-        const name = req.body[`items[${itemIndex}][name]`];
-        const price = req.body[`items[${itemIndex}][price]`];
+          const itemData: any = {
+            name: item.name,
+            price: Number(item.price),
+          };
 
-        if (!name || price === undefined || price === null) {
-          response.error(
-            res,
-            `Item ${itemIndex} must have name and price`,
-            "validation error"
+          // Find matching file for this item
+          const matchingFile = files?.find(
+            (file) => file.fieldname === `items[${index}][image]`
           );
-          return;
+          if (matchingFile) {
+            itemData.image_url = `/uploads/${matchingFile.filename}`;
+          }
+
+          return itemData;
+        });
+      } else {
+        // Fallback: try to parse items from individual fields
+        let itemIndex = 0;
+        while (req.body[`items[${itemIndex}][name]`]) {
+          const name = req.body[`items[${itemIndex}][name]`];
+          const price = req.body[`items[${itemIndex}][price]`];
+
+          if (!name || price === undefined || price === null) {
+            response.error(
+              res,
+              `Item ${itemIndex} must have name and price`,
+              "validation error"
+            );
+            return;
+          }
+
+          const item: any = {
+            name,
+            price: Number(price),
+          };
+
+          const imageFieldName = `items[${itemIndex}][image]`;
+          const matchingFile = files?.find(
+            (file) => file.fieldname === imageFieldName
+          );
+          if (matchingFile) {
+            item.image_url = `/uploads/${matchingFile.filename}`;
+          }
+
+          items.push(item);
+          itemIndex++;
         }
-
-        const item: any = {
-          name,
-          price: Number(price),
-        };
-
-        // Check if this item has an uploaded image
-        const imageFieldName = `items[${itemIndex}][image]`;
-        if (files && files[imageFieldName] && files[imageFieldName][0]) {
-          item.image_url = `/uploads/${files[imageFieldName][0].filename}`;
-        }
-
-        items.push(item);
-        itemIndex++;
       }
 
-      // Validate at least one item exists
       if (items.length === 0) {
         response.error(
           res,
@@ -159,7 +175,6 @@ export default {
         return;
       }
 
-      // Check if expense amount exceeds current balance
       const currentBalance = await getCurrentBalance();
       const expenseAmount = Number(total);
 
@@ -191,7 +206,6 @@ export default {
     }
   },
 
-  // Get all expenses with pagination
   async getAllPengeluaran(req: IReqUser, res: Response): Promise<void> {
     try {
       const { limit = 10, page = 1, search } = req.query;
@@ -229,7 +243,6 @@ export default {
     }
   },
 
-  // Get single expense by ID
   async getPengeluaranById(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -255,7 +268,6 @@ export default {
     }
   },
 
-  // Delete expense
   async deletePengeluaran(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -282,7 +294,6 @@ export default {
     }
   },
 
-  // Update expense
   async updatePengeluaran(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -293,13 +304,11 @@ export default {
         return;
       }
 
-      // Get the existing pengeluaran
       const existingPengeluaran = await pengeluaranModel.findById(id);
       if (!existingPengeluaran) {
         return response.notFound(res, "pengeluaran not found");
       }
 
-      // Build update object
       const updateData: any = {};
       if (title) updateData.title = title;
       if (items) {
@@ -315,13 +324,11 @@ export default {
       }
       if (total !== undefined) updateData.total = Number(total);
 
-      // If total is being updated, check if new total exceeds balance
       if (total !== undefined) {
         const newTotal = Number(total);
         const oldTotal = existingPengeluaran.total;
         const difference = newTotal - oldTotal;
 
-        // Only check if new total is greater than old total
         if (difference > 0) {
           const currentBalance = await getCurrentBalance();
 
