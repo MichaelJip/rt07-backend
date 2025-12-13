@@ -297,7 +297,8 @@ export default {
   async updatePengeluaran(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { title, items, total } = req.body;
+      const { title, total } = req.body;
+      const files = req.files as Express.Multer.File[];
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid pengeluaran id", "validation error");
@@ -311,8 +312,40 @@ export default {
 
       const updateData: any = {};
       if (title) updateData.title = title;
-      if (items) {
-        if (!Array.isArray(items) || items.length === 0) {
+
+      // Handle items similar to createPengeluaran
+      if (req.body.items) {
+        let items = [];
+        if (Array.isArray(req.body.items)) {
+          // Items are already parsed as array
+          items = req.body.items.map((item: any, index: number) => {
+            if (!item.name || item.price === undefined || item.price === null) {
+              throw new Error(`Item ${index} must have name and price`);
+            }
+
+            const itemData: any = {
+              name: item.name,
+              price: Number(item.price),
+            };
+
+            // Keep existing image_url if present
+            if (item.image_url) {
+              itemData.image_url = item.image_url;
+            }
+
+            // Find matching file for this item (new upload)
+            const matchingFile = files?.find(
+              (file) => file.fieldname === `items[${index}][image]`
+            );
+            if (matchingFile) {
+              itemData.image_url = `/uploads/${matchingFile.filename}`;
+            }
+
+            return itemData;
+          });
+        }
+
+        if (items.length === 0) {
           response.error(
             res,
             "items must be a non-empty array",
@@ -322,6 +355,7 @@ export default {
         }
         updateData.items = items;
       }
+
       if (total !== undefined) updateData.total = Number(total);
 
       if (total !== undefined) {

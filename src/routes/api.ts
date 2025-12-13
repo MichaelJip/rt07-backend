@@ -82,6 +82,7 @@ router.get(
 router.patch(
   "/pengeluaran/:id",
   [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  mediaMiddleware.any(),
   keuanganController.updatePengeluaran
 );
 router.delete(
