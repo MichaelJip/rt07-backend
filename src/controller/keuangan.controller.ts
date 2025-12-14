@@ -1,5 +1,7 @@
 import { Response } from "express";
 import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
 import iuranModel from "../models/iuran.model";
 import pengeluaranModel from "../models/pengeluaran.model";
 import { IURAN_STATUS } from "../utils/constants";
@@ -37,6 +39,23 @@ async function getCurrentBalance(): Promise<number> {
     totalExpenseResult.length > 0 ? totalExpenseResult[0].total : 0;
 
   return totalIncome - totalExpense;
+}
+
+function deleteImageFile(imageUrl: string): void {
+  try {
+    // Extract filename from URL (e.g., "/uploads/filename.jpg" -> "filename.jpg")
+    const filename = imageUrl.replace('/uploads/', '');
+    const filePath = path.join(process.cwd(), 'uploads', filename);
+
+    // Check if file exists before deleting
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Deleted old image: ${filePath}`);
+    }
+  } catch (error) {
+    console.error(`Failed to delete image ${imageUrl}:`, error);
+    // Don't throw error - continue even if deletion fails
+  }
 }
 
 export default {
@@ -283,6 +302,15 @@ export default {
         return response.notFound(res, "pengeluaran not found");
       }
 
+      // Delete all associated images
+      if (result.items && Array.isArray(result.items)) {
+        result.items.forEach((item: any) => {
+          if (item.image_url) {
+            deleteImageFile(item.image_url);
+          }
+        });
+      }
+
       return response.success(
         res,
         result,
@@ -300,6 +328,10 @@ export default {
       const { title, total } = req.body;
       const files = req.files as Express.Multer.File[];
 
+      // Debug logging
+      console.log("Update req.body:", req.body);
+      console.log("Update req.files:", files);
+
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid pengeluaran id", "validation error");
         return;
@@ -309,6 +341,8 @@ export default {
       if (!existingPengeluaran) {
         return response.notFound(res, "pengeluaran not found");
       }
+
+      console.log("Existing pengeluaran items:", existingPengeluaran.items);
 
       const updateData: any = {};
       if (title) updateData.title = title;
@@ -328,18 +362,32 @@ export default {
               price: Number(item.price),
             };
 
-            // Keep existing image_url if present
-            if (item.image_url) {
-              itemData.image_url = item.image_url;
-            }
+            // Priority for image_url:
+            // 1. New file upload (highest priority)
+            // 2. Existing image_url from request body (frontend sends it)
+            // 3. Keep old image_url from database (if exists)
 
             // Find matching file for this item (new upload)
             const matchingFile = files?.find(
               (file) => file.fieldname === `items[${index}][image]`
             );
+
             if (matchingFile) {
+              // New file uploaded - delete old image and use new one
+              const oldImageUrl = existingPengeluaran.items[index]?.image_url;
+              if (oldImageUrl) {
+                deleteImageFile(oldImageUrl);
+              }
               itemData.image_url = `/uploads/${matchingFile.filename}`;
+            } else if (item.image_url) {
+              // Frontend sent an image_url - keep it
+              itemData.image_url = item.image_url;
+            } else if (existingPengeluaran.items[index]?.image_url) {
+              // No new file and no image_url in request - keep old one from database
+              itemData.image_url = existingPengeluaran.items[index].image_url;
             }
+
+            console.log(`Item ${index}:`, itemData);
 
             return itemData;
           });
