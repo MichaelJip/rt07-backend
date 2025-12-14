@@ -26,6 +26,19 @@ export const UpdatePasswordDTO = z.object({
   password: z.string().min(8, "Password length min 8"),
 });
 
+export const UpdateProfileDTO = z.object({
+  username: z.string().min(5, "Name length min 5").optional(),
+  address: z.string().optional(),
+  position: z.string().optional(),
+  phone_number: z
+    .string()
+    .regex(/^[0-9]+$/, "Phone number must contain only numbers")
+    .min(10, "Phone number too short")
+    .max(15, "Phone number too long")
+    .optional(),
+  image_url: z.string().optional(),
+});
+
 export const IuranDTO = z.object({
   user: z.string(),
   period: z.string(),

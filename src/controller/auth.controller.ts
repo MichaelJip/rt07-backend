@@ -1,11 +1,13 @@
 import { Response, Request } from "express";
-import { UserDTO, UserLoginDTO, PushTokenDTO } from "../utils/zodSchema";
+import { UserDTO, UserLoginDTO, PushTokenDTO, UpdateProfileDTO } from "../utils/zodSchema";
 import userModel, { User } from "../models/user.model";
 import response from "../utils/response";
 import { encrypt } from "../utils/encryption";
 import { generateToken } from "../utils/jwt";
 import { IReqUser } from "../utils/interface";
 import { QueryFilter } from "mongoose";
+import fs from "fs";
+import path from "path";
 
 export default {
   async register(req: Request, res: Response): Promise<void> {
@@ -188,6 +190,92 @@ export default {
       return response.success(res, result, "push token updated successfully");
     } catch (error) {
       response.error(res, error, "failed to update push token");
+      return;
+    }
+  },
+  async updateProfile(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        response.unauthorized(res, "unauthorized");
+        return;
+      }
+
+      const { username, address, position, phone_number } = req.body;
+      const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+
+      console.log("Update Profile Request:");
+      console.log("- Body:", { username, address, position, phone_number });
+      console.log("- File uploaded:", req.file ? "Yes" : "No");
+      console.log("- Image URL:", image_url);
+
+      const parsed = UpdateProfileDTO.safeParse({
+        username,
+        address,
+        position,
+        phone_number,
+        image_url,
+      });
+
+      if (!parsed.success) {
+        console.log("Validation error:", parsed.error);
+        response.error(res, parsed.error, "validation error");
+        return;
+      }
+
+      // Check if username is being updated and if it's already taken
+      if (parsed.data.username) {
+        const existingUser = await userModel.findOne({
+          username: parsed.data.username,
+          _id: { $ne: userId },
+        });
+
+        if (existingUser) {
+          response.conflict(res, "Username is already taken");
+          return;
+        }
+      }
+
+      // If new image is uploaded, delete the old one
+      if (image_url) {
+        const currentUser = await userModel.findById(userId);
+        if (currentUser?.image_url) {
+          const oldImagePath = path.join(process.cwd(), currentUser.image_url);
+          console.log("Attempting to delete old image:", oldImagePath);
+          if (fs.existsSync(oldImagePath)) {
+            try {
+              fs.unlinkSync(oldImagePath);
+              console.log("Old image deleted successfully");
+            } catch (error) {
+              console.error("Failed to delete old image:", error);
+            }
+          } else {
+            console.log("Old image file does not exist");
+          }
+        }
+      }
+
+      // Filter out undefined values to only update provided fields
+      const updateData = Object.fromEntries(
+        Object.entries(parsed.data).filter(([_, value]) => value !== undefined)
+      );
+
+      console.log("Update data:", updateData);
+
+      const result = await userModel
+        .findByIdAndUpdate(userId, updateData, { new: true })
+        .select("-password");
+
+      if (!result) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      console.log("Profile updated successfully");
+      return response.success(res, result, "profile updated successfully");
+    } catch (error) {
+      console.error("Update profile error:", error);
+      response.error(res, error, "failed to update profile");
       return;
     }
   },
