@@ -33,6 +33,7 @@ export const IuranDTO = z.object({
   status: z.string(),
   proof_image_url: z.string().optional().nullable(),
   note: z.string().optional().nullable(),
+  type: z.enum(["regular", "custom"]).optional(),
   submitted_at: z.string().optional().nullable(),
   confirmed_at: z.string().optional().nullable(),
   confirmed_by: z.string().optional().nullable(),

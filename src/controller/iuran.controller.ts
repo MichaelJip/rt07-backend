@@ -535,4 +535,120 @@ export default {
       return;
     }
   },
+  // Generate custom period iuran (e.g., for special events like "17 Agustus")
+  async generateCustomPeriodIuran(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { period, amount, description } = req.body;
+
+      // Validate required fields
+      if (!period || !amount || !description) {
+        response.error(
+          res,
+          "period, amount, and description are required",
+          "validation error"
+        );
+        return;
+      }
+
+      // Validate amount is a valid number
+      if (isNaN(Number(amount)) || Number(amount) <= 0) {
+        response.error(res, "amount must be a positive number", "validation error");
+        return;
+      }
+
+      // Validate period format (YYYY-MM)
+      const periodRegex = /^\d{4}-\d{2}$/;
+      if (!periodRegex.test(period)) {
+        response.error(
+          res,
+          "period must be in YYYY-MM format (e.g., 2025-12)",
+          "validation error"
+        );
+        return;
+      }
+
+      console.log(
+        `Creating custom iuran for period: ${period} with amount: ${amount}, description: ${description}`
+      );
+
+      // Find all users EXCEPT ADMIN
+      const users = await userModel
+        .find({
+          role: { $ne: ROLES.ADMIN },
+        })
+        .select("_id username role");
+
+      console.log(`Found ${users.length} users (excluding ADMIN)`);
+
+      let createdCount = 0;
+      const errors: string[] = [];
+
+      // Create iuran for each user (no skip check - users can have multiple custom iuran)
+      for (const user of users) {
+        try {
+          await iuranModel.create({
+            user: user._id,
+            period: period,
+            amount: String(amount),
+            type: "custom",
+            status: IURAN_STATUS.UNPAID,
+            note: description,
+            submitted_at: null,
+            confirmed_at: null,
+            confirmed_by: null,
+          });
+          createdCount++;
+        } catch (error: any) {
+          errors.push(`User ${user.username}: ${error.message}`);
+        }
+      }
+
+      console.log(
+        `Custom iuran generation complete. Created: ${createdCount}`
+      );
+
+      // Send notification to all non-ADMIN users about new custom iuran
+      if (createdCount > 0) {
+        const nonAdminRoles = [
+          ROLES.RT,
+          ROLES.RW,
+          ROLES.BENDAHARA,
+          ROLES.SATPAM,
+          ROLES.WARGA,
+        ];
+
+        const notificationBody = `Iuran khusus untuk ${period} (${description}) sudah tersedia. Jumlah: Rp ${Number(amount).toLocaleString("id-ID")}. Silahkan lakukan pembayaran.`;
+
+        for (const role of nonAdminRoles) {
+          await notificationService.sendToRole(role, {
+            title: "Iuran Khusus Baru 📋",
+            body: notificationBody,
+            data: {
+              type: "custom_iuran",
+              period: period,
+              amount: String(amount),
+              description: description,
+            },
+          });
+        }
+      }
+
+      return response.success(
+        res,
+        {
+          period,
+          amount,
+          description: description,
+          totalUsers: users.length,
+          created: createdCount,
+          errors: errors.length > 0 ? errors : null,
+        },
+        "Custom period iuran generated successfully"
+      );
+    } catch (error) {
+      console.error("Error generating custom period iuran:", error);
+      response.error(res, error, "failed to generate custom period iuran");
+      return;
+    }
+  },
 };

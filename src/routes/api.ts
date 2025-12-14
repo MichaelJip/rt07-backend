@@ -28,6 +28,11 @@ router.post(
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   iuranController.generateMonthlyIuran
 );
+router.post(
+  "/iuran/generate-custom",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  iuranController.generateCustomPeriodIuran
+);
 router.get(
   "/iuran/status-summary/:period",
   authMiddleware,

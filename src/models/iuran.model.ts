@@ -52,6 +52,11 @@ const iuranSchema = new Schema(
     note: {
       type: Schema.Types.String,
     },
+    type: {
+      type: Schema.Types.String,
+      enum: ["regular", "custom"],
+      default: "regular",
+    },
 
     submitted_at: {
       type: Schema.Types.Date,
@@ -72,8 +77,8 @@ const iuranSchema = new Schema(
   }
 );
 
-// 1 user hanya 1 record per bulan
-iuranSchema.index({ user: 1, period: 1 }, { unique: true });
+// Index for faster queries (non-unique to allow multiple iuran per period)
+iuranSchema.index({ user: 1, period: 1 });
 
 const iuranModel = mongoose.model<Iuran>(IURAN_MODEL_NAME, iuranSchema);
 
