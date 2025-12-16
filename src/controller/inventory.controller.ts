@@ -10,6 +10,8 @@ export default {
     const { name, quantity } = req.body;
     const userId = (req as IReqUser).user?.id;
 
+    console.log("Creating inventory - User ID:", userId);
+
     const parsed = InventoryDTO.safeParse({
       name,
       quantity,
@@ -32,7 +34,10 @@ export default {
         return;
       }
 
-      const result = await inventoryModel.create(data);
+      const result = await inventoryModel.create({
+        ...data,
+        createdBy: userId,
+      });
       response.success(res, result, "success add inventory");
       return;
     } catch (error) {

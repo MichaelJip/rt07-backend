@@ -105,6 +105,7 @@ router.delete(
 
 //Inventory
 router.get("/inventory", authMiddleware, inventoryController.findAll);
+router.get("/inventory/:id", authMiddleware, inventoryController.detail);
 router.post("/inventory", [
   authMiddleware,
   aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
