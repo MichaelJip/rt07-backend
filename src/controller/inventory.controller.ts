@@ -10,8 +10,6 @@ export default {
     const { name, quantity } = req.body;
     const userId = (req as IReqUser).user?.id;
 
-    console.log("Creating inventory - User ID:", userId);
-
     const parsed = InventoryDTO.safeParse({
       name,
       quantity,
