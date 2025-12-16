@@ -2,7 +2,7 @@ import cron from "node-cron";
 import userModel from "../models/user.model";
 import iuranModel from "../models/iuran.model";
 import { IURAN_STATUS, ROLES } from "../utils/constants";
-import notificationService from "../utils/notification.service";
+import notificationService from "../services/notification.service";
 
 function getCurrentPeriod(): string {
   const now = new Date();

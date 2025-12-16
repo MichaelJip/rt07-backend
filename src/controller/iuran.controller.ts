@@ -8,7 +8,7 @@ import { IuranSubmitWargaDTO } from "../utils/zodSchema";
 import path from "path";
 import fs from "fs";
 import userModel from "../models/user.model";
-import notificationService from "../utils/notification.service";
+import notificationService from "../services/notification.service";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {

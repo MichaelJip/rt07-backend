@@ -5,7 +5,14 @@ export const UserDTO = z.object({
   email: z.email().min(1, "Email is required"),
   username: z.string().min(5, "Name length min 5"),
   password: z.string().min(8, "Password length min 8"),
-  role: z.enum([ROLES.ADMIN, ROLES.RT, ROLES.RW, ROLES.SATPAM, ROLES.WARGA, ROLES.BENDAHARA]),
+  role: z.enum([
+    ROLES.ADMIN,
+    ROLES.RT,
+    ROLES.RW,
+    ROLES.SATPAM,
+    ROLES.WARGA,
+    ROLES.BENDAHARA,
+  ]),
   address: z.string().optional(),
   position: z.string().optional(),
   phone_number: z
@@ -59,4 +66,14 @@ export const IuranSubmitWargaDTO = z.object({
 
 export const PushTokenDTO = z.object({
   pushToken: z.string().min(1, "Push token is required"),
+});
+
+export const InventoryDTO = z.object({
+  name: z.string().min(1, "Name length min 1"),
+  quantity: z.string(),
+});
+
+export const InventoryUpdateDTO = z.object({
+  name: z.string().min(1, "Name length min 1").optional(),
+  quantity: z.string().optional(),
 });

@@ -6,6 +6,7 @@ import aclMiddleware from "../middleware/acl.middleware";
 import authMiddleware from "../middleware/auth.middleware";
 import mediaMiddleware from "../middleware/media.middleware";
 import { ROLES } from "../utils/constants";
+import inventoryController from "../controller/inventory.controller";
 
 const router = express.Router();
 
@@ -101,5 +102,23 @@ router.delete(
   [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
   keuanganController.deletePengeluaran
 );
+
+//Inventory
+router.get("/inventory", authMiddleware, inventoryController.findAll);
+router.post("/inventory", [
+  authMiddleware,
+  aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
+  inventoryController.create,
+]);
+router.patch("/inventory/:id", [
+  authMiddleware,
+  aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
+  inventoryController.update,
+]);
+router.delete("/inventory/:id", [
+  authMiddleware,
+  aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
+  inventoryController.delete,
+]);
 
 export default router;
