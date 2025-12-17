@@ -7,6 +7,7 @@ import authMiddleware from "../middleware/auth.middleware";
 import mediaMiddleware from "../middleware/media.middleware";
 import { ROLES } from "../utils/constants";
 import inventoryController from "../controller/inventory.controller";
+import eventController from "../controller/event.controller";
 
 const router = express.Router();
 
@@ -29,77 +30,46 @@ router.get("/user", authMiddleware, authController.findAll);
 
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);
-router.get("/iuran/my-history", authMiddleware, iuranController.getMyHistory);
-router.post(
-  "/iuran/generate-monthly",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
-  iuranController.generateMonthlyIuran
-);
-router.post(
-  "/iuran/generate-custom",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
-  iuranController.generateCustomPeriodIuran
-);
 router.get(
   "/iuran/status-summary/:period",
-  authMiddleware,
   iuranController.getStatusSummary
 );
-router.get(
-  "/iuran/history/period/:period",
-  [authMiddleware, aclMiddleware([ROLES.BENDAHARA, ROLES.ADMIN, ROLES.RT])],
-  iuranController.getHistoryByPeriod
-);
-router.get(
-  "/iuran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT])],
-  iuranController.findOne
-);
-router.patch(
-  "/iuran/:id/submit",
-  [authMiddleware, aclMiddleware([ROLES.WARGA])],
-  mediaMiddleware.single("proof_image_url"),
-  iuranController.submitPayment
-);
-router.patch(
-  "/iuran/:id/status",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
-  iuranController.updateStatus
+router.post(
+  "/iuran/record-payment",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  iuranController.recordPayment
 );
 
-// Laporan Keuangan (Financial Report)
+// Laporan Keuangan (Financial Report) - Public
 router.get(
   "/keuangan/laporan",
-  authMiddleware,
   keuanganController.getLaporanKeuangan
 );
 
 // Pengeluaran (Expenses)
 router.post(
   "/pengeluaran",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
   mediaMiddleware.any(),
   keuanganController.createPengeluaran
 );
 router.get(
   "/pengeluaran",
-  authMiddleware,
   keuanganController.getAllPengeluaran
 );
 router.get(
   "/pengeluaran/:id",
-  authMiddleware,
   keuanganController.getPengeluaranById
 );
 router.patch(
   "/pengeluaran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
   mediaMiddleware.any(),
   keuanganController.updatePengeluaran
 );
 router.delete(
   "/pengeluaran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
   keuanganController.deletePengeluaran
 );
 
@@ -121,5 +91,48 @@ router.delete("/inventory/:id", [
   aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
   inventoryController.delete,
 ]);
+
+//Event (Donations for events like 17 Agustus, Tahun Baru, etc.)
+router.get(
+  "/event",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.findAll
+);
+router.get(
+  "/event/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.findOne
+);
+router.post(
+  "/event",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.create
+);
+router.patch(
+  "/event/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.update
+);
+router.delete(
+  "/event/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.delete
+);
+router.post(
+  "/event/:id/donation",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.addDonation
+);
+router.post(
+  "/event/:id/expense",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  mediaMiddleware.any(),
+  eventController.addExpense
+);
+router.post(
+  "/event/:id/complete",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  eventController.completeEvent
+);
 
 export default router;

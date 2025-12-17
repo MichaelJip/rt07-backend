@@ -60,6 +60,7 @@ export function startMonthlyIuranGeneration() {
           ROLES.RT,
           ROLES.RW,
           ROLES.BENDAHARA,
+          ROLES.SEKRETARIS,
           ROLES.SATPAM,
           ROLES.WARGA,
         ];

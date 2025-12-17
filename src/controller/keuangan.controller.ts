@@ -4,11 +4,13 @@ import fs from "fs";
 import path from "path";
 import iuranModel from "../models/iuran.model";
 import pengeluaranModel from "../models/pengeluaran.model";
+import eventModel from "../models/event.model";
 import { IURAN_STATUS } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 
 async function getCurrentBalance(): Promise<number> {
+  // Total income from paid iuran
   const totalIncomeResult = await iuranModel.aggregate([
     {
       $match: {
@@ -23,9 +25,23 @@ async function getCurrentBalance(): Promise<number> {
     },
   ]);
 
-  const totalIncome =
+  const totalIuranIncome =
     totalIncomeResult.length > 0 ? totalIncomeResult[0].total : 0;
 
+  // Total donations from completed events
+  const completedEvents = await eventModel
+    .find({ status: "completed" })
+    .lean();
+
+  const totalEventDonations = completedEvents.reduce(
+    (sum, event) => sum + Number(event.total_donations),
+    0
+  );
+
+  // Total income = iuran + event donations
+  const totalIncome = totalIuranIncome + totalEventDonations;
+
+  // Total expenses
   const totalExpenseResult = await pengeluaranModel.aggregate([
     {
       $group: {
@@ -63,6 +79,7 @@ export default {
     try {
       const balance = await getCurrentBalance();
 
+      // Total income from iuran
       const totalIncomeResult = await iuranModel.aggregate([
         {
           $match: {
@@ -77,9 +94,10 @@ export default {
         },
       ]);
 
-      const totalIncome =
+      const totalIuranIncome =
         totalIncomeResult.length > 0 ? totalIncomeResult[0].total : 0;
 
+      // Total expenses
       const totalExpenseResult = await pengeluaranModel.aggregate([
         {
           $group: {
@@ -92,12 +110,44 @@ export default {
       const totalExpense =
         totalExpenseResult.length > 0 ? totalExpenseResult[0].total : 0;
 
+      // Get completed events
+      const completedEvents = await eventModel
+        .find({ status: "completed" })
+        .lean();
+
+      let totalEventDonations = 0;
+      let totalEventExpenses = 0;
+
+      const eventSummaries = completedEvents.map((event) => {
+        const donations = Number(event.total_donations);
+        const expenses = Number(event.total_expenses);
+        const balance = Number(event.balance);
+
+        totalEventDonations += donations;
+        totalEventExpenses += expenses;
+
+        return {
+          name: event.name,
+          date: event.date,
+          total_donations: donations,
+          total_expenses: expenses,
+          balance: balance,
+          completed_at: event.completed_at,
+        };
+      });
+
+      // Total income = iuran + ALL event donations (not just surplus)
+      const totalIncome = totalIuranIncome + totalEventDonations;
+
       return response.success(
         res,
         {
           total_income: totalIncome,
+          total_iuran_income: totalIuranIncome,
+          total_event_donations: totalEventDonations,
           total_expense: totalExpense,
           balance: balance,
+          events: eventSummaries,
         },
         "success get laporan keuangan"
       );

@@ -3,6 +3,7 @@ export enum ROLES {
   RT = "rt",
   RW = "rw",
   BENDAHARA = "bendahara",
+  SEKRETARIS = "sekretaris",
   SATPAM = "satpam",
   WARGA = "warga",
 }

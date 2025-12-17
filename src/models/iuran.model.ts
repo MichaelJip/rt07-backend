@@ -71,6 +71,19 @@ const iuranSchema = new Schema(
       ref: USER_MODEL_NAME,
       default: null,
     },
+    payment_date: {
+      type: Schema.Types.Date,
+      default: null,
+    },
+    payment_method: {
+      type: Schema.Types.String,
+      default: null,
+    },
+    recorded_by: {
+      type: Schema.Types.ObjectId,
+      ref: USER_MODEL_NAME,
+      default: null,
+    },
   },
   {
     timestamps: true,

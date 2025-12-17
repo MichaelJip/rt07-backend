@@ -8,6 +8,8 @@ import { IReqUser } from "../utils/interface";
 import { QueryFilter } from "mongoose";
 import fs from "fs";
 import path from "path";
+import iuranModel from "../models/iuran.model";
+import { IURAN_STATUS, ROLES } from "../utils/constants";
 
 export default {
   async register(req: Request, res: Response): Promise<void> {
@@ -49,6 +51,31 @@ export default {
       }
 
       const result = await userModel.create(data);
+
+      // Create 1 year of iuran for the next year if user is not ADMIN
+      if (result.role !== ROLES.ADMIN) {
+        const nextYear = new Date().getFullYear() + 1;
+        const iuranPromises = [];
+
+        for (let month = 1; month <= 12; month++) {
+          const period = `${nextYear}-${String(month).padStart(2, "0")}`;
+          iuranPromises.push(
+            iuranModel.create({
+              user: result._id,
+              period: period,
+              amount: "50000",
+              type: "regular",
+              status: IURAN_STATUS.UNPAID,
+              submitted_at: null,
+              confirmed_at: null,
+              confirmed_by: null,
+            })
+          );
+        }
+
+        await Promise.all(iuranPromises);
+        console.log(`Created 12 months of iuran for user ${result.username} for year ${nextYear}`);
+      }
 
       response.success(res, result, "success register");
       return;
