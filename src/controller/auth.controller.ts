@@ -1,5 +1,10 @@
 import { Response, Request } from "express";
-import { UserDTO, UserLoginDTO, PushTokenDTO, UpdateProfileDTO } from "../utils/zodSchema";
+import {
+  UserDTO,
+  UserLoginDTO,
+  PushTokenDTO,
+  UpdateProfileDTO,
+} from "../utils/zodSchema";
 import userModel, { User } from "../models/user.model";
 import response from "../utils/response";
 import { encrypt } from "../utils/encryption";
@@ -74,7 +79,9 @@ export default {
         }
 
         await Promise.all(iuranPromises);
-        console.log(`Created 12 months of iuran for user ${result.username} for year ${nextYear}`);
+        console.log(
+          `Created 12 months of iuran for user ${result.username} for year ${nextYear}`
+        );
       }
 
       response.success(res, result, "success register");
@@ -134,44 +141,76 @@ export default {
     try {
       const { limit = 10, page = 1, search } = req.query;
 
-      let query: QueryFilter<User> = {
-        role: { $ne: "admin" }, // Filter out admin users
-      };
+      let query: QueryFilter<User> = {};
 
       if (search && typeof search === "string") {
-        query.$text = { $search: search };
+        const searchRegex = new RegExp(search, "i");
+        query.$or = [
+          { username: searchRegex },
+          { email: searchRegex },
+          { address: searchRegex },
+        ];
       }
 
-      // Define role priority order
-      const rolePriority: Record<string, number> = {
-        rt: 1,
-        rw: 2,
-        bendahara: 3,
-        satpam: 4,
-        warga: 5,
-      };
+      const allResults = await userModel
+        .find(query)
+        .select("-password")
+        .lean()
+        .exec();
 
-      // Fetch all matching documents (we need to sort in-memory)
-      const allResults = await userModel.find(query).lean().exec();
-
-      // Sort by role priority
-      const sortedResults = allResults.sort((a, b) => {
-        const priorityA = rolePriority[a.role] || 999;
-        const priorityB = rolePriority[b.role] || 999;
-        return priorityA - priorityB;
-      });
-
-      // Apply pagination after sorting
-      const paginatedResult = sortedResults.slice(
+      const paginatedResult = allResults.slice(
         (+page - 1) * +limit,
         +page * +limit
       );
 
-      const count = sortedResults.length;
+      // Get unpaid regular iuran periods for each user in paginated results
+      const userIds = paginatedResult.map((user: any) => user._id);
+      const unpaidIuran = await iuranModel.aggregate([
+        {
+          $match: {
+            user: { $in: userIds },
+            status: "unpaid",
+            type: "regular", // Only get regular iuran, not event donations
+          },
+        },
+        {
+          $sort: { period: 1 }, // Sort periods chronologically
+        },
+        {
+          $group: {
+            _id: "$user",
+            unpaidPeriods: { $push: "$period" },
+            unpaidCount: { $sum: 1 },
+          },
+        },
+      ]);
+
+      // Create a map for quick lookup
+      const unpaidMap = new Map(
+        unpaidIuran.map((item) => [
+          item._id.toString(),
+          {
+            periods: item.unpaidPeriods,
+            count: item.unpaidCount,
+          },
+        ])
+      );
+
+      // Add unpaid periods to each user
+      const resultWithUnpaid = paginatedResult.map((user: any) => {
+        const unpaidData = unpaidMap.get(user._id.toString());
+        return {
+          ...user,
+          unpaidIuranCount: unpaidData?.count || 0,
+          unpaidIuranPeriods: unpaidData?.periods || [],
+        };
+      });
+
+      const count = allResults.length;
 
       return response.pagination(
         res,
-        paginatedResult,
+        resultWithUnpaid,
         {
           total: count,
           totalPages: Math.ceil(count / +limit),
@@ -303,6 +342,45 @@ export default {
     } catch (error) {
       console.error("Update profile error:", error);
       response.error(res, error, "failed to update profile");
+      return;
+    }
+  },
+  async deleteUser(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        response.conflict(res, "user id is required");
+        return;
+      }
+
+      const user = await userModel.findById(id);
+
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      if (user.image_url) {
+        const imagePath = path.join(process.cwd(), user.image_url);
+        if (fs.existsSync(imagePath)) {
+          try {
+            fs.unlinkSync(imagePath);
+            console.log("User image deleted successfully");
+          } catch (error) {
+            console.error("Failed to delete user image:", error);
+          }
+        }
+      }
+
+      await iuranModel.deleteMany({ user: id });
+
+      await userModel.findByIdAndDelete(id);
+
+      return response.success(res, null, "user deleted successfully");
+    } catch (error) {
+      console.error("Delete user error:", error);
+      response.error(res, error, "failed to delete user");
       return;
     }
   },

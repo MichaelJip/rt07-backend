@@ -123,7 +123,7 @@ const eventSchema = new Schema(
 );
 
 // Calculate totals before saving
-eventSchema.pre("save", function (next) {
+eventSchema.pre("save", async function () {
   const totalDonations = this.donations.reduce(
     (sum, d) => sum + Number(d.amount),
     0
@@ -136,8 +136,6 @@ eventSchema.pre("save", function (next) {
   this.total_donations = String(totalDonations);
   this.total_expenses = String(totalExpenses);
   this.balance = String(totalDonations - totalExpenses);
-
-  next();
 });
 
 const eventModel = mongoose.model<Event>(EVENT_MODEL_NAME, eventSchema);

@@ -115,6 +115,35 @@ export default {
         return;
       }
 
+      // Validate amount
+      const totalAmount = Number(amount);
+      const REQUIRED_AMOUNT_PER_PERIOD = 50000;
+      const expectedTotalAmount = REQUIRED_AMOUNT_PER_PERIOD * periods.length;
+
+      if (isNaN(totalAmount) || totalAmount <= 0) {
+        response.error(res, "invalid amount", "validation error");
+        return;
+      }
+
+      // Check if amount matches exactly (50k per period)
+      if (totalAmount !== expectedTotalAmount) {
+        response.error(
+          res,
+          `invalid amount. For ${periods.length} period(s), you must pay exactly Rp ${expectedTotalAmount.toLocaleString(
+            "id-ID"
+          )} (Rp ${REQUIRED_AMOUNT_PER_PERIOD.toLocaleString(
+            "id-ID"
+          )} per period). You provided Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}`,
+          "validation error"
+        );
+        return;
+      }
+
+      // Calculate amount per period
+      const amountPerPeriod = REQUIRED_AMOUNT_PER_PERIOD;
+
       const now = new Date();
       const paymentDate = payment_date ? new Date(payment_date) : now;
       const updatedIuran = [];
@@ -140,7 +169,7 @@ export default {
             iuran._id,
             {
               status: IURAN_STATUS.PAID,
-              amount: String(amount),
+              amount: String(amountPerPeriod),
               payment_date: paymentDate,
               payment_method: payment_method || null,
               note: note || null,

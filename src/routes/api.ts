@@ -27,6 +27,11 @@ router.patch(
   authController.updateProfile
 );
 router.get("/user", authMiddleware, authController.findAll);
+router.delete(
+  "/user/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.deleteUser
+);
 
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);
