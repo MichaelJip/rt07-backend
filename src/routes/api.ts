@@ -35,46 +35,53 @@ router.delete(
 
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);
-router.get(
-  "/iuran/status-summary/:period",
-  iuranController.getStatusSummary
-);
+router.get("/iuran/receipt", authMiddleware, iuranController.generateReceipt);
+
+router.get("/iuran/status-summary/:period", iuranController.getStatusSummary);
 router.post(
   "/iuran/record-payment",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   iuranController.recordPayment
+);
+router.post(
+  "/iuran/create-yearly",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  iuranController.createYearlyIuran
 );
 
 // Laporan Keuangan (Financial Report) - Public
-router.get(
-  "/keuangan/laporan",
-  keuanganController.getLaporanKeuangan
-);
+router.get("/keuangan/laporan", keuanganController.getLaporanKeuangan);
 
 // Pengeluaran (Expenses)
 router.post(
   "/pengeluaran",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   mediaMiddleware.any(),
   keuanganController.createPengeluaran
 );
-router.get(
-  "/pengeluaran",
-  keuanganController.getAllPengeluaran
-);
-router.get(
-  "/pengeluaran/:id",
-  keuanganController.getPengeluaranById
-);
+router.get("/pengeluaran", keuanganController.getAllPengeluaran);
+router.get("/pengeluaran/:id", keuanganController.getPengeluaranById);
 router.patch(
   "/pengeluaran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   mediaMiddleware.any(),
   keuanganController.updatePengeluaran
 );
 router.delete(
   "/pengeluaran/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   keuanganController.deletePengeluaran
 );
 
@@ -100,43 +107,67 @@ router.delete("/inventory/:id", [
 //Event (Donations for events like 17 Agustus, Tahun Baru, etc.)
 router.get(
   "/event",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.findAll
 );
 router.get(
   "/event/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.findOne
 );
 router.post(
   "/event",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.create
 );
 router.patch(
   "/event/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.update
 );
 router.delete(
   "/event/:id",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.delete
 );
 router.post(
   "/event/:id/donation",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.addDonation
 );
 router.post(
   "/event/:id/expense",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   mediaMiddleware.any(),
   eventController.addExpense
 );
 router.post(
   "/event/:id/complete",
-  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS])],
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
   eventController.completeEvent
 );
 

@@ -30,6 +30,7 @@ async function init() {
 
     // serve static files
     app.use("/uploads", express.static("uploads"));
+    app.use("/receipts", express.static("receipts"));
 
     app.use(errorMiddleware.serverRoute());
     app.use(errorMiddleware.serverError());

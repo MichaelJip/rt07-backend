@@ -21,6 +21,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/mongoose": "^5.11.96",
     "@types/multer": "^2.0.0",
+    "@types/pdfkit": "^0.17.4",
     "body-parser": "^2.2.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -31,6 +32,7 @@
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "nodemon": "^3.1.11",
+    "pdfkit": "^0.17.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "zod": "^4.1.13"

@@ -5,7 +5,7 @@ import { IURAN_STATUS, ROLES } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import userModel from "../models/user.model";
-import notificationService from "../services/notification.service";
+import { generateReceiptPDF } from "../utils/pdfGenerator";
 
 export default {
   async findAll(req: IReqUser, res: Response): Promise<void> {
@@ -129,7 +129,9 @@ export default {
       if (totalAmount !== expectedTotalAmount) {
         response.error(
           res,
-          `invalid amount. For ${periods.length} period(s), you must pay exactly Rp ${expectedTotalAmount.toLocaleString(
+          `invalid amount. For ${
+            periods.length
+          } period(s), you must pay exactly Rp ${expectedTotalAmount.toLocaleString(
             "id-ID"
           )} (Rp ${REQUIRED_AMOUNT_PER_PERIOD.toLocaleString(
             "id-ID"
@@ -186,22 +188,6 @@ export default {
         }
       }
 
-      // Send notification to user
-      if (updatedIuran.length > 0) {
-        const periodsText = updatedIuran.map((i) => i?.period).join(", ");
-        await notificationService.sendToUser(userId, {
-          title: "Pembayaran berhasil dicatat! ✅",
-          body: `Pembayaran Anda untuk periode ${periodsText} telah dicatat oleh Bendahara. Total: Rp ${Number(
-            amount
-          ).toLocaleString("id-ID")}`,
-          data: {
-            type: "payment_recorded",
-            periods: periodsText,
-            amount: String(amount),
-          },
-        });
-      }
-
       return response.success(
         res,
         {
@@ -252,6 +238,218 @@ export default {
       return response.success(res, summary, "success get status summary");
     } catch (error) {
       response.error(res, error, "failed to get status summary");
+      return;
+    }
+  },
+  async generateReceipt(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { ids } = req.query;
+
+      if (!ids || typeof ids !== "string") {
+        response.error(
+          res,
+          "ids parameter is required (comma-separated iuran IDs)",
+          "validation error"
+        );
+        return;
+      }
+
+      // Parse comma-separated IDs
+      const iuranIds = ids.split(",").map((id) => id.trim());
+
+      if (iuranIds.length === 0) {
+        response.error(
+          res,
+          "at least one iuran ID is required",
+          "validation error"
+        );
+        return;
+      }
+
+      // Validate all IDs
+      for (const id of iuranIds) {
+        if (!mongoose.isValidObjectId(id)) {
+          response.error(res, `invalid iuran ID: ${id}`, "validation error");
+          return;
+        }
+      }
+
+      // Fetch iuran records
+      const iuranRecords = await iuranModel
+        .find({
+          _id: { $in: iuranIds },
+          status: IURAN_STATUS.PAID,
+        })
+        .populate("user", "username email")
+        .populate("recorded_by", "username")
+        .lean();
+
+      if (iuranRecords.length === 0) {
+        response.notFound(
+          res,
+          "no paid iuran records found with the provided IDs"
+        );
+        return;
+      }
+
+      // Validate all iuran belong to the same user
+      const userIds = new Set(
+        iuranRecords.map((iuran: any) => iuran.user._id.toString())
+      );
+      if (userIds.size > 1) {
+        response.error(
+          res,
+          "all iuran records must belong to the same user",
+          "validation error"
+        );
+        return;
+      }
+
+      // Calculate totals
+      const totalAmount = iuranRecords.reduce(
+        (sum, iuran: any) => sum + Number(iuran.amount),
+        0
+      );
+      const amountPerPeriod = Number(iuranRecords[0].amount);
+
+      // Get user and recorder info
+      const userInfo = iuranRecords[0].user as any;
+      const recorderInfo = iuranRecords[0].recorded_by as any;
+
+      // Prepare receipt data
+      const receiptData = {
+        receiptNumber: `RCP-${Date.now()}-${userInfo._id.toString().slice(-6)}`,
+        receiptDate: new Date(),
+        paymentDate: new Date(iuranRecords[0].payment_date || new Date()),
+        user: {
+          id: userInfo._id.toString(),
+          username: userInfo.username,
+          email: userInfo.email,
+        },
+        periods: iuranRecords.map((iuran: any) => iuran.period).sort(),
+        amountPerPeriod: amountPerPeriod,
+        totalPeriods: iuranRecords.length,
+        totalAmount: totalAmount,
+        paymentMethod: iuranRecords[0].payment_method || null,
+        note: iuranRecords[0].note || null,
+        recordedBy: {
+          id: recorderInfo?._id?.toString() || "",
+          username: recorderInfo?.username || "Unknown",
+        },
+      };
+
+      const receiptPdfUrl = await generateReceiptPDF(receiptData);
+
+      return response.success(
+        res,
+        {
+          receiptPdfUrl: receiptPdfUrl,
+          receipt: receiptData,
+        },
+        "Receipt generated successfully"
+      );
+    } catch (error) {
+      console.error("Generate receipt error:", error);
+      response.error(res, error, "failed to generate receipt");
+      return;
+    }
+  },
+  async createYearlyIuran(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { year } = req.body;
+
+      if (!year) {
+        response.error(res, "year is required", "validation error");
+        return;
+      }
+
+      const targetYear = Number(year);
+      if (isNaN(targetYear) || targetYear < 2020 || targetYear > 2100) {
+        response.error(
+          res,
+          "invalid year. Must be between 2020 and 2100",
+          "validation error"
+        );
+        return;
+      }
+
+      // Get all users except ADMIN
+      const users = await userModel.find({ role: { $ne: ROLES.ADMIN } });
+
+      if (users.length === 0) {
+        response.error(
+          res,
+          "no users found to create iuran",
+          "validation error"
+        );
+        return;
+      }
+
+      let totalCreated = 0;
+      let totalSkipped = 0;
+      const userResults = [];
+
+      // Create iuran for each user
+      for (const user of users) {
+        const iuranPromises = [];
+        const createdPeriods = [];
+        const skippedPeriods = [];
+
+        for (let month = 1; month <= 12; month++) {
+          const period = `${targetYear}-${String(month).padStart(2, "0")}`;
+
+          const existingIuran = await iuranModel.findOne({
+            user: user._id,
+            period: period,
+            type: "regular",
+          });
+
+          if (existingIuran) {
+            skippedPeriods.push(period);
+            totalSkipped++;
+            continue;
+          }
+
+          iuranPromises.push(
+            iuranModel.create({
+              user: user._id,
+              period: period,
+              amount: "50000",
+              type: "regular",
+              status: IURAN_STATUS.UNPAID,
+              submitted_at: null,
+              confirmed_at: null,
+              confirmed_by: null,
+            })
+          );
+          createdPeriods.push(period);
+          totalCreated++;
+        }
+
+        await Promise.all(iuranPromises);
+
+        userResults.push({
+          userId: user._id,
+          username: user.username,
+          created: createdPeriods.length,
+          skipped: skippedPeriods.length,
+        });
+      }
+
+      return response.success(
+        res,
+        {
+          year: targetYear,
+          totalUsers: users.length,
+          totalCreated,
+          totalSkipped,
+          userResults,
+        },
+        `Successfully created ${totalCreated} iuran record(s) for ${users.length} user(s)`
+      );
+    } catch (error) {
+      console.log(error, "check error");
+      response.error(res, error, "failed to create yearly iuran");
       return;
     }
   },

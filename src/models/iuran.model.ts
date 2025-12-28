@@ -17,6 +17,9 @@ export interface Iuran
   submitted_at?: Date | null;
   confirmed_at?: Date | null;
   confirmed_by?: Types.ObjectId | null;
+  payment_date?: Date | null;
+  payment_method?: string | null;
+  recorded_by?: Types.ObjectId | null;
 }
 
 const Schema = mongoose.Schema;
