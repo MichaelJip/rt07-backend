@@ -13,6 +13,7 @@ export interface EventExpense {
   description: string;
   amount: string;
   date: Date;
+  category: "HIBURAN" | "LOMBA" | "KONSUMSI" | "LAINNYA";
   proof_image_urls?: string[];
 }
 
@@ -61,6 +62,11 @@ const EventExpenseSchema = new Schema({
   date: {
     type: Date,
     default: Date.now,
+  },
+  category: {
+    type: String,
+    enum: ["HIBURAN", "LOMBA", "KONSUMSI", "LAINNYA"],
+    required: true,
   },
   proof_image_urls: {
     type: [String],

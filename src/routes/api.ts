@@ -170,5 +170,13 @@ router.post(
   ],
   eventController.completeEvent
 );
+router.get(
+  "/event/:id/download-report",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  eventController.downloadEventReport
+);
 
 export default router;

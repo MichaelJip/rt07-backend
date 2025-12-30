@@ -4,6 +4,7 @@ import eventModel, { Event } from "../models/event.model";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import pengeluaranModel from "../models/pengeluaran.model";
+import { generateEventReport } from "../utils/excelReportGenerator";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -236,7 +237,7 @@ export default {
   async addExpense(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { description, amount, date } = req.body;
+      const { description, amount, date, category } = req.body;
       const files = req.files as Express.Multer.File[] | undefined;
 
       if (!mongoose.isValidObjectId(id)) {
@@ -244,10 +245,20 @@ export default {
         return;
       }
 
-      if (!description || !amount) {
+      if (!description || !amount || !category) {
         response.error(
           res,
-          "description and amount are required",
+          "description, amount, and category are required",
+          "validation error"
+        );
+        return;
+      }
+
+      const validCategories = ["HIBURAN", "LOMBA", "KONSUMSI", "LAINNYA"];
+      if (!validCategories.includes(category)) {
+        response.error(
+          res,
+          "category must be one of: HIBURAN, LOMBA, KONSUMSI, LAINNYA",
           "validation error"
         );
         return;
@@ -275,6 +286,7 @@ export default {
         description,
         amount: String(amount),
         date: date ? new Date(date) : new Date(),
+        category,
         proof_image_urls,
       });
 
@@ -375,6 +387,50 @@ export default {
       );
     } catch (error) {
       response.error(res, error, "failed to complete event");
+      return;
+    }
+  },
+
+  async downloadEventReport(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.isValidObjectId(id)) {
+        response.error(res, "invalid event id", "validation error");
+        return;
+      }
+
+      const event = await eventModel.findById(id).lean();
+      if (!event) {
+        response.notFound(res, "event not found");
+        return;
+      }
+
+      if (event.status !== "completed") {
+        response.error(
+          res,
+          "can only download report for completed events",
+          "validation error"
+        );
+        return;
+      }
+
+      const totalSumbangan = Number(event.total_donations);
+      const buffer = await generateEventReport(event as Event, totalSumbangan);
+
+      // Set headers for Excel file download
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="Laporan_${event.name.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.xlsx"`
+      );
+
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      response.error(res, error, "failed to download event report");
       return;
     }
   },

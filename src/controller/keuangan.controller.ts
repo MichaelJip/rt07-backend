@@ -378,9 +378,6 @@ export default {
       const { title, total } = req.body;
       const files = req.files as Express.Multer.File[];
 
-      // Debug logging
-      console.log("Update req.body:", req.body);
-      console.log("Update req.files:", files);
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid pengeluaran id", "validation error");
