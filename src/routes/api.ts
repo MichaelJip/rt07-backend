@@ -26,7 +26,8 @@ router.patch(
   mediaMiddleware.single("image_url"),
   authController.updateProfile
 );
-router.get("/user", authMiddleware, authController.findAll);
+// router.get("/user", authMiddleware, authController.findAll);
+router.get("/user", authController.findAll);
 router.delete(
   "/user/:id",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
@@ -104,7 +105,6 @@ router.delete("/inventory/:id", [
   inventoryController.delete,
 ]);
 
-//Event (Donations for events like 17 Agustus, Tahun Baru, etc.)
 router.get(
   "/event",
   [
@@ -113,6 +113,7 @@ router.get(
   ],
   eventController.findAll
 );
+router.get("/event/slug/:slug", eventController.findBySlug);
 router.get(
   "/event/:id",
   [

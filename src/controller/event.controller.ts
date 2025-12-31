@@ -5,6 +5,7 @@ import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import pengeluaranModel from "../models/pengeluaran.model";
 import { generateEventReport } from "../utils/excelReportGenerator";
+import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -26,8 +27,17 @@ export default {
         return;
       }
 
+      // Generate slug from name
+      const baseSlug = generateSlug(name);
+
+      // Check for existing slugs to ensure uniqueness
+      const existingEvents = await eventModel.find({ slug: new RegExp(`^${baseSlug}`) }).select('slug').lean();
+      const existingSlugs = existingEvents.map(e => e.slug);
+      const slug = generateUniqueSlug(baseSlug, existingSlugs);
+
       const result = await eventModel.create({
         name,
+        slug,
         description,
         date: new Date(date),
         donations: [],
@@ -387,6 +397,26 @@ export default {
       );
     } catch (error) {
       response.error(res, error, "failed to complete event");
+      return;
+    }
+  },
+
+  async findBySlug(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { slug } = req.params;
+
+      const result = await eventModel
+        .findOne({ slug, status: "completed" })
+        .select("-created_by -expenses.proof_image_urls")
+        .lean();
+
+      if (!result) {
+        return response.notFound(res, "event not found or not yet completed");
+      }
+
+      return response.success(res, result, "success find event");
+    } catch (error) {
+      response.error(res, error, "failed to find event");
       return;
     }
   },

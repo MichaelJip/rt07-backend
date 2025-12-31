@@ -19,6 +19,7 @@ export interface EventExpense {
 
 export interface Event {
   name: string;
+  slug: string;
   description: string;
   date: Date;
   donations: Donation[];
@@ -79,6 +80,12 @@ const eventSchema = new Schema(
     name: {
       type: String,
       required: true,
+    },
+    slug: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
     },
     description: {
       type: String,
