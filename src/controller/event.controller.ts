@@ -6,6 +6,7 @@ import response from "../utils/response";
 import pengeluaranModel from "../models/pengeluaran.model";
 import { generateEventReport } from "../utils/excelReportGenerator";
 import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
+import { ROLES } from "../utils/constants";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -122,6 +123,7 @@ export default {
     try {
       const { id } = req.params;
       const { name, description, date, status } = req.body;
+      const userRole = req.user?.role;
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid event id", "validation error");
@@ -133,7 +135,8 @@ export default {
         return response.notFound(res, "event not found");
       }
 
-      if (event.status === "completed") {
+      // ADMIN can bypass completed event restriction
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
         response.error(
           res,
           "cannot update completed event",
@@ -162,6 +165,7 @@ export default {
   async delete(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const userRole = req.user?.role;
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid event id", "validation error");
@@ -173,7 +177,8 @@ export default {
         return response.notFound(res, "event not found");
       }
 
-      if (event.status === "completed") {
+      // ADMIN can bypass completed event restriction
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
         response.error(
           res,
           "cannot delete completed event",
@@ -195,6 +200,7 @@ export default {
     try {
       const { id } = req.params;
       const { donor_name, amount, date } = req.body;
+      const userRole = req.user?.role;
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid event id", "validation error");
@@ -215,7 +221,8 @@ export default {
         return response.notFound(res, "event not found");
       }
 
-      if (event.status === "completed") {
+      // ADMIN can bypass completed event restriction
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
         response.error(
           res,
           "cannot add donation to completed event",
@@ -249,6 +256,7 @@ export default {
       const { id } = req.params;
       const { description, amount, date, category } = req.body;
       const files = req.files as Express.Multer.File[] | undefined;
+      const userRole = req.user?.role;
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid event id", "validation error");
@@ -279,7 +287,8 @@ export default {
         return response.notFound(res, "event not found");
       }
 
-      if (event.status === "completed") {
+      // ADMIN can bypass completed event restriction
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
         response.error(
           res,
           "cannot add expense to completed event",

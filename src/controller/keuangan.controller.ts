@@ -128,6 +128,7 @@ export default {
 
         return {
           name: event.name,
+          slug: event.slug,
           date: event.date,
           total_donations: donations,
           total_expenses: expenses,
