@@ -15,6 +15,11 @@ import fs from "fs";
 import path from "path";
 import iuranModel from "../models/iuran.model";
 import { IURAN_STATUS, ROLES } from "../utils/constants";
+import ExcelJS from "exceljs";
+import {
+  createUserImportTemplate,
+  exportUsersToExcel,
+} from "../utils/excelTemplate";
 
 export default {
   async register(req: Request, res: Response): Promise<void> {
@@ -381,6 +386,245 @@ export default {
     } catch (error) {
       console.error("Delete user error:", error);
       response.error(res, error, "failed to delete user");
+      return;
+    }
+  },
+
+  async downloadTemplate(req: Request, res: Response): Promise<void> {
+    try {
+      const buffer = await createUserImportTemplate();
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=Template_Import_User.xlsx"
+      );
+
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error("Download template error:", error);
+      response.error(res, error, "failed to download template");
+      return;
+    }
+  },
+
+  async importUsers(req: IReqUser, res: Response): Promise<void> {
+    try {
+      if (!req.file) {
+        response.conflict(res, "File Excel tidak ditemukan");
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer as any);
+
+      const worksheet = workbook.getWorksheet("Data Pengguna");
+
+      if (!worksheet) {
+        response.conflict(
+          res,
+          "Sheet 'Data Pengguna' tidak ditemukan di file Excel"
+        );
+        return;
+      }
+
+      const results = {
+        success: [] as string[],
+        skipped: [] as string[],
+        errors: [] as { row: number; email: string; errors: string[] }[],
+      };
+
+      const rowsToProcess: any[] = [];
+
+      // Start from row 2 (skip header)
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // Skip header
+
+        const email = row.getCell(1).value?.toString().trim();
+        const username = row.getCell(2).value?.toString().trim();
+        const role = row.getCell(3).value?.toString().trim();
+        const address = row.getCell(4).value?.toString().trim() || "";
+        const phone_number = row.getCell(5).value?.toString().trim() || "";
+
+        // Skip empty rows
+        if (!email && !username) return;
+
+        rowsToProcess.push({
+          rowNumber,
+          email,
+          username,
+          role,
+          address,
+          phone_number,
+        });
+      });
+
+      // Process each row
+      for (const rowData of rowsToProcess) {
+        const { rowNumber, email, username, role, address, phone_number } =
+          rowData;
+        const rowErrors: string[] = [];
+
+        // Validation
+        if (!email) {
+          rowErrors.push("Email wajib diisi");
+        } else if (!email.includes("@")) {
+          rowErrors.push("Format email tidak valid");
+        }
+
+        if (!username) {
+          rowErrors.push("Nama pengguna wajib diisi");
+        }
+
+        if (!role) {
+          rowErrors.push("Peran wajib diisi");
+        } else {
+          const validRoles = [
+            ROLES.ADMIN,
+            ROLES.RT,
+            ROLES.RW,
+            ROLES.BENDAHARA,
+            ROLES.SEKRETARIS,
+            ROLES.SATPAM,
+            ROLES.WARGA,
+          ];
+          if (!validRoles.includes(role as any)) {
+            rowErrors.push(
+              `Peran tidak valid. Pilihan: ${validRoles.join(", ")}`
+            );
+          }
+        }
+
+        if (phone_number && (phone_number.length < 10 || phone_number.length > 15)) {
+          rowErrors.push("No. telepon harus 10-15 digit");
+        }
+
+        if (rowErrors.length > 0) {
+          results.errors.push({
+            row: rowNumber,
+            email: email || "N/A",
+            errors: rowErrors,
+          });
+          continue;
+        }
+
+        // Check for existing user
+        const existingEmail = await userModel.findOne({ email });
+        const existingUsername = await userModel.findOne({ username });
+
+        if (existingEmail || existingUsername) {
+          const skipReason = [];
+          if (existingEmail) skipReason.push("email sudah terdaftar");
+          if (existingUsername) skipReason.push("username sudah terdaftar");
+
+          results.skipped.push(
+            `Baris ${rowNumber} (${email}): ${skipReason.join(", ")}`
+          );
+          continue;
+        }
+
+        // Create user
+        try {
+          const newUser = await userModel.create({
+            email,
+            username,
+            password: "password123", // Default password
+            role,
+            address,
+            phone_number,
+          });
+
+          // Create iuran for non-admin users
+          if (newUser.role !== ROLES.ADMIN) {
+            const nextYear = new Date().getFullYear() + 1;
+            const iuranPromises = [];
+
+            for (let month = 1; month <= 12; month++) {
+              const period = `${nextYear}-${String(month).padStart(2, "0")}`;
+              iuranPromises.push(
+                iuranModel.create({
+                  user: newUser._id,
+                  period: period,
+                  amount: "50000",
+                  type: "regular",
+                  status: IURAN_STATUS.UNPAID,
+                  submitted_at: null,
+                  confirmed_at: null,
+                  confirmed_by: null,
+                })
+              );
+            }
+
+            await Promise.all(iuranPromises);
+          }
+
+          results.success.push(`Baris ${rowNumber} (${email}): berhasil dibuat`);
+        } catch (error: any) {
+          results.errors.push({
+            row: rowNumber,
+            email,
+            errors: [error.message || "Gagal membuat user"],
+          });
+        }
+      }
+
+      return response.success(
+        res,
+        results,
+        `Import selesai. Berhasil: ${results.success.length}, Dilewati: ${results.skipped.length}, Error: ${results.errors.length}`
+      );
+    } catch (error) {
+      console.error("Import users error:", error);
+      response.error(res, error, "Gagal import user");
+      return;
+    }
+  },
+
+  async exportUsers(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { ids } = req.query;
+
+      let query: any = {};
+
+      // If IDs are provided, filter by those IDs
+      if (ids) {
+        const userIds = Array.isArray(ids) ? ids : [ids];
+        query._id = { $in: userIds };
+      }
+
+      const users = await userModel
+        .find(query)
+        .select("-password")
+        .lean()
+        .exec();
+
+      if (users.length === 0) {
+        response.notFound(res, "Tidak ada user yang ditemukan untuk di-export");
+        return;
+      }
+
+      const buffer = await exportUsersToExcel(users);
+
+      const filename = ids
+        ? `Export_Selected_Users_${new Date().toISOString().split("T")[0]}.xlsx`
+        : `Export_All_Users_${new Date().toISOString().split("T")[0]}.xlsx`;
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=${filename}`
+      );
+
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error("Export users error:", error);
+      response.error(res, error, "Gagal export user");
       return;
     }
   },

@@ -23,40 +23,13 @@ export default (req: Request, res: Response, next: NextFunction): void => {
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
-      res.status(500).json({
-        meta: {
-          status: 500,
-          message: "jwt expired",
-        },
-        data: {
-          expiredAt: error.expiredAt,
-          message: error.message,
-          name: error.name,
-        },
-      });
-      return;
+      return response.unauthorized(res, "Token expired");
     }
 
     if (error instanceof jwt.JsonWebTokenError) {
-      res.status(500).json({
-        meta: {
-          status: 500,
-          message: "Invalid token",
-        },
-        data: {
-          message: error.message,
-          name: error.name,
-        },
-      });
-      return;
+      return response.unauthorized(res, "Invalid token");
     }
 
-    res.status(500).json({
-      meta: {
-        status: 500,
-        message: "Authentication error",
-      },
-      data: error,
-    });
+    return response.unauthorized(res, "Authentication failed");
   }
 };

@@ -28,6 +28,19 @@ router.patch(
 );
 // router.get("/user", authMiddleware, authController.findAll);
 router.get("/user", authController.findAll);
+// User Import/Export
+router.get("/user/template/download", authController.downloadTemplate);
+router.post(
+  "/user/import",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  mediaMiddleware.single("file"),
+  authController.importUsers
+);
+router.get(
+  "/user/export",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.exportUsers
+);
 router.delete(
   "/user/:id",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
