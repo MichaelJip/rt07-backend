@@ -1,13 +1,14 @@
 import { Response } from "express";
-import mongoose from "mongoose";
 import fs from "fs";
+import mongoose from "mongoose";
 import path from "path";
+import eventModel from "../models/event.model";
 import iuranModel from "../models/iuran.model";
 import pengeluaranModel from "../models/pengeluaran.model";
-import eventModel from "../models/event.model";
 import { IURAN_STATUS } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
+import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
 
 async function getCurrentBalance(): Promise<number> {
   // Total income from paid iuran
@@ -29,9 +30,7 @@ async function getCurrentBalance(): Promise<number> {
     totalIncomeResult.length > 0 ? totalIncomeResult[0].total : 0;
 
   // Total donations from completed events
-  const completedEvents = await eventModel
-    .find({ status: "completed" })
-    .lean();
+  const completedEvents = await eventModel.find({ status: "completed" }).lean();
 
   const totalEventDonations = completedEvents.reduce(
     (sum, event) => sum + Number(event.total_donations),
@@ -60,8 +59,8 @@ async function getCurrentBalance(): Promise<number> {
 function deleteImageFile(imageUrl: string): void {
   try {
     // Extract filename from URL (e.g., "/uploads/filename.jpg" -> "filename.jpg")
-    const filename = imageUrl.replace('/uploads/', '');
-    const filePath = path.join(process.cwd(), 'uploads', filename);
+    const filename = imageUrl.replace("/uploads/", "");
+    const filePath = path.join(process.cwd(), "uploads", filename);
 
     // Check if file exists before deleting
     if (fs.existsSync(filePath)) {
@@ -170,11 +169,7 @@ export default {
       const files = req.files as Express.Multer.File[];
 
       if (!title || !total) {
-        response.error(
-          res,
-          "title and total are required",
-          "validation error"
-        );
+        response.error(res, "title and total are required", "validation error");
         return;
       }
 
@@ -262,8 +257,18 @@ export default {
         return;
       }
 
+      // Generate unique slug
+      const baseSlug = generateSlug(title);
+      const existingPengeluaran = await pengeluaranModel
+        .find()
+        .select("slug")
+        .lean();
+      const existingSlugs = existingPengeluaran.map((p: any) => p.slug);
+      const slug = generateUniqueSlug(baseSlug, existingSlugs);
+
       const result = await pengeluaranModel.create({
         title,
+        slug,
         items,
         total: expenseAmount,
         created_by: userId,
@@ -338,6 +343,26 @@ export default {
     }
   },
 
+  async getPengeluaranBySlug(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { slug } = req.params;
+
+      const result = await pengeluaranModel
+        .findOne({ slug })
+        .populate("created_by", "username")
+        .lean();
+
+      if (!result) {
+        return response.notFound(res, "pengeluaran not found");
+      }
+
+      return response.success(res, result, "success get pengeluaran");
+    } catch (error) {
+      response.error(res, error, "failed to get pengeluaran");
+      return;
+    }
+  },
+
   async deletePengeluaran(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -362,11 +387,7 @@ export default {
         });
       }
 
-      return response.success(
-        res,
-        result,
-        "success delete pengeluaran"
-      );
+      return response.success(res, result, "success delete pengeluaran");
     } catch (error) {
       response.error(res, error, "failed to delete pengeluaran");
       return;
@@ -378,7 +399,6 @@ export default {
       const { id } = req.params;
       const { title, total } = req.body;
       const files = req.files as Express.Multer.File[];
-
 
       if (!mongoose.isValidObjectId(id)) {
         response.error(res, "invalid pengeluaran id", "validation error");
@@ -393,7 +413,20 @@ export default {
       console.log("Existing pengeluaran items:", existingPengeluaran.items);
 
       const updateData: any = {};
-      if (title) updateData.title = title;
+      if (title) {
+        updateData.title = title;
+
+        // Generate new slug if title changed
+        if (title !== existingPengeluaran.title) {
+          const baseSlug = generateSlug(title);
+          const existingPengeluaran = await pengeluaranModel
+            .find({ _id: { $ne: id } })
+            .select("slug")
+            .lean();
+          const existingSlugs = existingPengeluaran.map((p: any) => p.slug);
+          updateData.slug = generateUniqueSlug(baseSlug, existingSlugs);
+        }
+      }
 
       // Handle items similar to createPengeluaran
       if (req.body.items) {

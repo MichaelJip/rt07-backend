@@ -11,6 +11,7 @@ export interface PengeluaranItem {
 
 export interface Pengeluaran {
   title: string;
+  slug: string;
   items: PengeluaranItem[];
   total: number;
   created_by: Types.ObjectId;
@@ -42,6 +43,11 @@ const pengeluaranSchema = new Schema(
     title: {
       type: Schema.Types.String,
       required: true,
+    },
+    slug: {
+      type: Schema.Types.String,
+      required: true,
+      unique: true,
     },
     items: {
       type: [pengeluaranItemSchema],

@@ -80,6 +80,7 @@ router.post(
   keuanganController.createPengeluaran
 );
 router.get("/pengeluaran", keuanganController.getAllPengeluaran);
+router.get("/pengeluaran/slug/:slug", keuanganController.getPengeluaranBySlug);
 router.get("/pengeluaran/:id", keuanganController.getPengeluaranById);
 router.patch(
   "/pengeluaran/:id",
