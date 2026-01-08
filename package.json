@@ -12,6 +12,7 @@
     "seed": "ts-node src/scripts/seed.ts",
     "migrate:add-slugs": "ts-node src/scripts/addSlugsToEvents.ts",
     "migrate:add-slugs-pengeluaran": "ts-node src/scripts/addSlugsToPengeluaran.ts",
+    "clear-uploads": "ts-node src/scripts/clear-uploads.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },

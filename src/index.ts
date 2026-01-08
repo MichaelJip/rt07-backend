@@ -5,6 +5,7 @@ import bodyParser = require("body-parser");
 import router from "./routes/api";
 import errorMiddleware from "./middleware/error.middleware";
 import { startMonthlyIuranGeneration } from "./config/generateIuran";
+import path from "path";
 
 async function init() {
   try {
@@ -29,8 +30,8 @@ async function init() {
     app.use("/api", router);
 
     // serve static files
-    app.use("/uploads", express.static("uploads"));
-    app.use("/receipts", express.static("receipts"));
+    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+    app.use("/receipts", express.static(path.join(process.cwd(), "receipts")));
 
     app.use(errorMiddleware.serverRoute());
     app.use(errorMiddleware.serverError());
