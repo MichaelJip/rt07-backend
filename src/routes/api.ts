@@ -50,7 +50,15 @@ router.delete(
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);
 router.get("/iuran/receipt", authMiddleware, iuranController.generateReceipt);
-
+router.get("/iuran/template/download", iuranController.downloadTemplate);
+router.get(
+  "/iuran/export",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  iuranController.exportIuran
+);
 router.get("/iuran/status-summary/:period", iuranController.getStatusSummary);
 router.post(
   "/iuran/record-payment",
@@ -65,6 +73,17 @@ router.post(
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   iuranController.createYearlyIuran
 );
+// Iuran Import/Export
+router.post(
+  "/iuran/import",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  mediaMiddleware.single("file"),
+  iuranController.importIuran
+);
+
 
 // Laporan Keuangan (Financial Report) - Public
 router.get("/keuangan/laporan", keuanganController.getLaporanKeuangan);

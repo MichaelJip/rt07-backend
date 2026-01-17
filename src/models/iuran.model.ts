@@ -20,6 +20,7 @@ export interface Iuran
   payment_date?: Date | null;
   payment_method?: string | null;
   recorded_by?: Types.ObjectId | null;
+  is_imported?: boolean;
 }
 
 const Schema = mongoose.Schema;
@@ -86,6 +87,10 @@ const iuranSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: USER_MODEL_NAME,
       default: null,
+    },
+    is_imported: {
+      type: Schema.Types.Boolean,
+      default: false,
     },
   },
   {

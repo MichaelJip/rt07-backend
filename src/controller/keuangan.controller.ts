@@ -11,11 +11,12 @@ import response from "../utils/response";
 import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
 
 async function getCurrentBalance(): Promise<number> {
-  // Total income from paid iuran
+  // Total income from paid iuran (exclude imported data - already counted in old balance)
   const totalIncomeResult = await iuranModel.aggregate([
     {
       $match: {
         status: IURAN_STATUS.PAID,
+        is_imported: { $ne: true },
       },
     },
     {
@@ -78,11 +79,12 @@ export default {
     try {
       const balance = await getCurrentBalance();
 
-      // Total income from iuran
+      // Total income from iuran (exclude imported data)
       const totalIncomeResult = await iuranModel.aggregate([
         {
           $match: {
             status: IURAN_STATUS.PAID,
+            is_imported: { $ne: true },
           },
         },
         {
