@@ -351,9 +351,20 @@ export default {
       // Create individual pengeluaran records for EACH expense in the event
       // This makes ALL expenses transparent in the public pengeluaran list
       const createdPengeluaran = [];
+
+      // Get existing slugs to ensure uniqueness
+      const existingPengeluaran = await pengeluaranModel.find({}, { slug: 1 }).lean();
+      const existingSlugs = existingPengeluaran.map((p) => p.slug);
+
       for (const expense of event.expenses) {
+        const title = `${event.name} - ${expense.description}`;
+        const baseSlug = generateSlug(title);
+        const slug = generateUniqueSlug(baseSlug, existingSlugs);
+        existingSlugs.push(slug); // Track newly created slugs
+
         const pengeluaran = await pengeluaranModel.create({
-          title: `${event.name} - ${expense.description}`,
+          title,
+          slug,
           items: [
             {
               name: expense.description,
