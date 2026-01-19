@@ -9,8 +9,12 @@ import { IURAN_STATUS } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
+import { getSettingValue, SETTINGS_KEYS } from "./settings.controller";
 
 async function getCurrentBalance(): Promise<number> {
+  // Get initial balance from settings (saldo awal periode)
+  const initialBalance = await getSettingValue(SETTINGS_KEYS.INITIAL_BALANCE, 0);
+
   // Total income from paid iuran (exclude imported data - already counted in old balance)
   const totalIncomeResult = await iuranModel.aggregate([
     {
@@ -54,7 +58,8 @@ async function getCurrentBalance(): Promise<number> {
   const totalExpense =
     totalExpenseResult.length > 0 ? totalExpenseResult[0].total : 0;
 
-  return totalIncome - totalExpense;
+  // Balance = initial_balance + income - expense
+  return initialBalance + totalIncome - totalExpense;
 }
 
 function deleteImageFile(imageUrl: string): void {
@@ -77,6 +82,9 @@ function deleteImageFile(imageUrl: string): void {
 export default {
   async getLaporanKeuangan(req: IReqUser, res: Response): Promise<void> {
     try {
+      // Get initial balance from settings
+      const initialBalance = await getSettingValue(SETTINGS_KEYS.INITIAL_BALANCE, 0);
+
       const balance = await getCurrentBalance();
 
       // Total income from iuran (exclude imported data)
@@ -144,6 +152,7 @@ export default {
       return response.success(
         res,
         {
+          initial_balance: initialBalance,
           total_income: totalIncome,
           total_iuran_income: totalIuranIncome,
           total_event_donations: totalEventDonations,

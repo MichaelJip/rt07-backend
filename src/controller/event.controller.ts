@@ -187,6 +187,11 @@ export default {
         return;
       }
 
+      // Delete related pengeluaran records if event was completed
+      if (event.status === "completed") {
+        await pengeluaranModel.deleteMany({ event_id: id });
+      }
+
       await eventModel.findByIdAndDelete(id);
 
       return response.success(res, null, "success delete event");
@@ -374,6 +379,7 @@ export default {
           ],
           total: Number(expense.amount),
           created_by: new Types.ObjectId(userId),
+          event_id: event._id, // Link pengeluaran to event
         });
         createdPengeluaran.push(pengeluaran);
       }

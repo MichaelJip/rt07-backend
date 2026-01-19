@@ -2,6 +2,7 @@ import express from "express";
 import authController from "../controller/auth.controller";
 import iuranController from "../controller/iuran.controller";
 import keuanganController from "../controller/keuangan.controller";
+import settingsController from "../controller/settings.controller";
 import aclMiddleware from "../middleware/acl.middleware";
 import authMiddleware from "../middleware/auth.middleware";
 import mediaMiddleware from "../middleware/media.middleware";
@@ -211,6 +212,23 @@ router.get(
     aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
   ],
   eventController.downloadEventReport
+);
+
+// Settings (Admin only)
+router.get(
+  "/settings",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  settingsController.getAll
+);
+router.get(
+  "/settings/initial-balance",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  settingsController.getInitialBalance
+);
+router.patch(
+  "/settings/initial-balance",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  settingsController.updateInitialBalance
 );
 
 export default router;

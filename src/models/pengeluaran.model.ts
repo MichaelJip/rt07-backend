@@ -15,6 +15,7 @@ export interface Pengeluaran {
   items: PengeluaranItem[];
   total: number;
   created_by: Types.ObjectId;
+  event_id?: Types.ObjectId; // Optional: linked to event if created from completeEvent
   created_at?: Date;
   updated_at?: Date;
 }
@@ -67,6 +68,12 @@ const pengeluaranSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: USER_MODEL_NAME,
       required: true,
+    },
+    event_id: {
+      type: Schema.Types.ObjectId,
+      ref: "Event",
+      required: false,
+      index: true,
     },
   },
   {
