@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import userModel from "../models/user.model";
 import iuranModel from "../models/iuran.model";
-import { IURAN_STATUS, ROLES } from "../utils/constants";
+import { IURAN_STATUS, ROLES, USER_STATUS } from "../utils/constants";
 import notificationService from "../services/notification.service";
 
 function getCurrentPeriod(): string {
@@ -12,49 +12,57 @@ function getCurrentPeriod(): string {
 }
 
 export function startMonthlyIuranGeneration() {
-  cron.schedule("1 0 1 * *", async () => {
+  // Run on January 1st at 00:01 AM - Create yearly iuran for all users
+  cron.schedule("1 0 1 1 *", async () => {
     try {
-      console.log("Creating monthly iuran for all users except ADMIN...");
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      console.log(`Creating yearly iuran for all users for year ${currentYear}...`);
 
-      const period = getCurrentPeriod();
-
-      // Find all users EXCEPT ADMIN
+      // Find all ACTIVE users EXCEPT ADMIN (skip inactive, away, and deleted users)
       const users = await userModel
         .find({
           role: { $ne: ROLES.ADMIN },
+          status: USER_STATUS.ACTIVE,
+          isDeleted: { $ne: true },
         })
-        .select("_id role");
+        .select("_id role status");
 
       console.log(`Found ${users.length} users (excluding ADMIN)`);
 
       let createdCount = 0;
 
       for (const user of users) {
-        const exists = await iuranModel.findOne({
-          user: user._id,
-          period: period,
-          type: "regular",
-        });
+        // Create iuran for all 12 months
+        for (let month = 1; month <= 12; month++) {
+          const period = `${currentYear}-${String(month).padStart(2, "0")}`;
 
-        // Only create if doesn't exist
-        if (!exists) {
-          await iuranModel.create({
+          const exists = await iuranModel.findOne({
             user: user._id,
             period: period,
-            amount: "50000",
             type: "regular",
-            status: IURAN_STATUS.UNPAID,
-            submitted_at: null,
-            confirmed_at: null,
-            confirmed_by: null,
           });
-          createdCount++;
+
+          // Only create if doesn't exist
+          if (!exists) {
+            await iuranModel.create({
+              user: user._id,
+              period: period,
+              amount: "50000",
+              type: "regular",
+              status: IURAN_STATUS.UNPAID,
+              submitted_at: null,
+              confirmed_at: null,
+              confirmed_by: null,
+            });
+            createdCount++;
+          }
         }
       }
 
-      console.log(`Monthly iuran created for ${createdCount} users!`);
+      console.log(`Yearly iuran created: ${createdCount} records for ${users.length} users!`);
 
-      // Send push notification to all non-ADMIN users about new iuran
+      // Send push notification to all non-ADMIN users about new yearly iuran
       if (createdCount > 0) {
         const nonAdminRoles = [
           ROLES.RT,
@@ -67,22 +75,22 @@ export function startMonthlyIuranGeneration() {
 
         for (const role of nonAdminRoles) {
           await notificationService.sendToRole(role, {
-            title: "Iuran Bulanan Baru 📋",
-            body: `Iuran bulanan untuk periode ${period} sudah tersedia. Silahkan lakukan pembayaran.`,
+            title: "Iuran Tahunan Baru 📋",
+            body: `Iuran untuk tahun ${currentYear} sudah tersedia. Silahkan lakukan pembayaran.`,
             data: {
-              type: "new_iuran",
-              period: period,
+              type: "new_yearly_iuran",
+              year: currentYear.toString(),
             },
           });
         }
         console.log(`Push notifications sent to all non-ADMIN users`);
       }
     } catch (error) {
-      console.error("Error creating monthly iuran:", error);
+      console.error("Error creating yearly iuran:", error);
     }
   });
 
-  console.log("Monthly iuran generation scheduled: 1st of every month at 00:01 AM");
+  console.log("Yearly iuran generation scheduled: January 1st at 00:01 AM");
 
   // Run on 10th of every month at 00:01 AM - Jatuh Tempo Reminder
   cron.schedule("1 0 10 * *", async () => {

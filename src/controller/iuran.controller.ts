@@ -184,6 +184,7 @@ export default {
               confirmed_at: now,
               confirmed_by: bendaharaId,
               recorded_by: bendaharaId,
+              is_imported: false, // Set to false so it counts as new income
             },
             { new: true }
           );

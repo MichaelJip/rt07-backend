@@ -47,6 +47,16 @@ router.delete(
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   authController.deleteUser
 );
+router.patch(
+  "/user/:id/status",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.updateUserStatus
+);
+router.post(
+  "/user/:id/restore",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.restoreUser
+);
 
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);

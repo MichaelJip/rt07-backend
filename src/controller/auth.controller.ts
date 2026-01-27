@@ -14,7 +14,7 @@ import { QueryFilter } from "mongoose";
 import fs from "fs";
 import path from "path";
 import iuranModel from "../models/iuran.model";
-import { IURAN_STATUS, ROLES } from "../utils/constants";
+import { IURAN_STATUS, ROLES, USER_STATUS } from "../utils/constants";
 import ExcelJS from "exceljs";
 import {
   createUserImportTemplate,
@@ -62,13 +62,16 @@ export default {
 
       const result = await userModel.create(data);
 
-      // Create 1 year of iuran for the next year if user is not ADMIN
-      if (result.role !== ROLES.ADMIN) {
-        const nextYear = new Date().getFullYear() + 1;
+      // Create iuran from current month until end of year if user is not ADMIN and is ACTIVE
+      if (result.role !== ROLES.ADMIN && result.status === USER_STATUS.ACTIVE) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1; // 1-12
         const iuranPromises = [];
 
-        for (let month = 1; month <= 12; month++) {
-          const period = `${nextYear}-${String(month).padStart(2, "0")}`;
+        // Create iuran from current month to December
+        for (let month = currentMonth; month <= 12; month++) {
+          const period = `${currentYear}-${String(month).padStart(2, "0")}`;
           iuranPromises.push(
             iuranModel.create({
               user: result._id,
@@ -85,7 +88,7 @@ export default {
 
         await Promise.all(iuranPromises);
         console.log(
-          `Created 12 months of iuran for user ${result.username} for year ${nextYear}`
+          `Created ${iuranPromises.length} months of iuran for user ${result.username} (${currentYear}-${String(currentMonth).padStart(2, "0")} to ${currentYear}-12)`
         );
       }
 
@@ -144,9 +147,19 @@ export default {
   },
   async findAll(req: IReqUser, res: Response): Promise<void> {
     try {
-      const { limit = 10, page = 1, search } = req.query;
+      const { limit = 10, page = 1, search, status, includeDeleted } = req.query;
 
       let query: QueryFilter<User> = {};
+
+      // By default, exclude deleted users unless includeDeleted=true
+      if (includeDeleted !== "true") {
+        query.isDeleted = { $ne: true };
+      }
+
+      // Filter by status (active, inactive, away)
+      if (status && typeof status === "string") {
+        query.status = status;
+      }
 
       if (search && typeof search === "string") {
         const searchRegex = new RegExp(search, "i");
@@ -160,6 +173,7 @@ export default {
       const allResults = await userModel
         .find(query)
         .select("-password")
+        .sort({ isDeleted: 1, status: 1, username: 1 }) // Sort: active first, then by name
         .lean()
         .exec();
 
@@ -366,26 +380,172 @@ export default {
         return;
       }
 
-      if (user.image_url) {
-        const imagePath = path.join(process.cwd(), user.image_url);
-        if (fs.existsSync(imagePath)) {
-          try {
-            fs.unlinkSync(imagePath);
-            console.log("User image deleted successfully");
-          } catch (error) {
-            console.error("Failed to delete user image:", error);
-          }
-        }
-      }
+      // Soft delete: mark user as deleted
+      await userModel.findByIdAndUpdate(id, {
+        isDeleted: true,
+        deletedAt: new Date(),
+      });
 
-      await iuranModel.deleteMany({ user: id });
+      // Delete only UNPAID iuran, keep PAID iuran for history
+      const deleteResult = await iuranModel.deleteMany({
+        user: id,
+        status: { $ne: IURAN_STATUS.PAID },
+      });
 
-      await userModel.findByIdAndDelete(id);
+      console.log(
+        `Soft deleted user ${user.username}, removed ${deleteResult.deletedCount} unpaid iuran records`
+      );
 
-      return response.success(res, null, "user deleted successfully");
+      return response.success(
+        res,
+        {
+          deletedUnpaidIuran: deleteResult.deletedCount,
+        },
+        "user deleted successfully (paid iuran history preserved)"
+      );
     } catch (error) {
       console.error("Delete user error:", error);
       response.error(res, error, "failed to delete user");
+      return;
+    }
+  },
+
+  async updateUserStatus(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { status, statusNote } = req.body;
+
+      if (!id) {
+        response.error(res, "user id is required", "validation error");
+        return;
+      }
+
+      const validStatuses = ["active", "inactive", "away"];
+      if (!status || !validStatuses.includes(status)) {
+        response.error(
+          res,
+          `status must be one of: ${validStatuses.join(", ")}`,
+          "validation error"
+        );
+        return;
+      }
+
+      const user = await userModel.findById(id);
+
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      const oldStatus = user.status;
+
+      // Update user status
+      const updatedUser = await userModel
+        .findByIdAndUpdate(
+          id,
+          {
+            status,
+            statusNote: statusNote || null,
+          },
+          { new: true }
+        )
+        .select("-password");
+
+      // If user becomes inactive or away, delete their unpaid iuran
+      if (status !== "active" && oldStatus === "active") {
+        const deleteResult = await iuranModel.deleteMany({
+          user: id,
+          status: { $ne: IURAN_STATUS.PAID },
+        });
+        console.log(
+          `User ${user.username} status changed to ${status}, removed ${deleteResult.deletedCount} unpaid iuran`
+        );
+      }
+
+      return response.success(res, updatedUser, "user status updated successfully");
+    } catch (error) {
+      console.error("Update user status error:", error);
+      response.error(res, error, "failed to update user status");
+      return;
+    }
+  },
+
+  async restoreUser(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        response.error(res, "user id is required", "validation error");
+        return;
+      }
+
+      const user = await userModel.findById(id);
+
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      if (!user.isDeleted) {
+        response.error(res, "user is not deleted", "validation error");
+        return;
+      }
+
+      // Restore user
+      const restoredUser = await userModel
+        .findByIdAndUpdate(
+          id,
+          {
+            isDeleted: false,
+            deletedAt: null,
+            status: "active",
+          },
+          { new: true }
+        )
+        .select("-password");
+
+      // Create iuran from current month to end of year
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      let iuranCreated = 0;
+
+      for (let month = currentMonth; month <= 12; month++) {
+        const period = `${currentYear}-${String(month).padStart(2, "0")}`;
+
+        const exists = await iuranModel.findOne({
+          user: id,
+          period: period,
+          type: "regular",
+        });
+
+        if (!exists) {
+          await iuranModel.create({
+            user: id,
+            period: period,
+            amount: "50000",
+            type: "regular",
+            status: IURAN_STATUS.UNPAID,
+          });
+          iuranCreated++;
+        }
+      }
+
+      console.log(
+        `Restored user ${user.username}, created ${iuranCreated} iuran records`
+      );
+
+      return response.success(
+        res,
+        {
+          user: restoredUser,
+          iuranCreated,
+        },
+        "user restored successfully"
+      );
+    } catch (error) {
+      console.error("Restore user error:", error);
+      response.error(res, error, "failed to restore user");
       return;
     }
   },

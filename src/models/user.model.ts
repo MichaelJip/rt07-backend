@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { z } from "zod";
-import { ROLES } from "../utils/constants";
+import { ROLES, USER_STATUS } from "../utils/constants";
 import { encrypt } from "../utils/encryption";
 import { UserDTO } from "../utils/zodSchema";
 
@@ -56,6 +56,23 @@ const userSchema = new Schema(
     },
     expoPushToken: {
       type: Schema.Types.String,
+      default: null,
+    },
+    status: {
+      type: Schema.Types.String,
+      enum: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.AWAY],
+      default: USER_STATUS.ACTIVE,
+    },
+    statusNote: {
+      type: Schema.Types.String,
+      default: null,
+    },
+    isDeleted: {
+      type: Schema.Types.Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Schema.Types.Date,
       default: null,
     },
   },
