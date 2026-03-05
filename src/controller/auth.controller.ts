@@ -451,15 +451,29 @@ export default {
         )
         .select("-password");
 
-      // If user becomes inactive or away, delete their unpaid iuran
-      if (status !== "active" && oldStatus === "active") {
-        const deleteResult = await iuranModel.deleteMany({
-          user: id,
-          status: { $ne: IURAN_STATUS.PAID },
-        });
-        console.log(
-          `User ${user.username} status changed to ${status}, removed ${deleteResult.deletedCount} unpaid iuran`
-        );
+      // If user becomes active from inactive/away, create missing iuran for remaining months
+      if (status === "active" && oldStatus !== "active") {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+
+        for (let month = currentMonth; month <= 12; month++) {
+          const period = `${currentYear}-${String(month).padStart(2, "0")}`;
+          const exists = await iuranModel.findOne({ user: id, period, type: "regular" });
+          if (!exists) {
+            await iuranModel.create({
+              user: id,
+              period,
+              amount: "50000",
+              type: "regular",
+              status: IURAN_STATUS.UNPAID,
+              submitted_at: null,
+              confirmed_at: null,
+              confirmed_by: null,
+            });
+          }
+        }
+        console.log(`User ${user.username} status changed to active, iuran ensured for remaining months`);
       }
 
       return response.success(res, updatedUser, "user status updated successfully");
