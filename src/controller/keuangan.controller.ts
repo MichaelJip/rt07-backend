@@ -5,13 +5,14 @@ import path from "path";
 import eventModel from "../models/event.model";
 import iuranModel from "../models/iuran.model";
 import pengeluaranModel from "../models/pengeluaran.model";
+import danaMasukModel from "../models/danaMasuk.model";
 import { IURAN_STATUS } from "../utils/constants";
 import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
 import { getSettingValue, SETTINGS_KEYS } from "./settings.controller";
 
-async function getCurrentBalance(): Promise<number> {
+export async function getCurrentBalance(): Promise<number> {
   // Get initial balance from settings (saldo awal periode)
   const initialBalance = await getSettingValue(SETTINGS_KEYS.INITIAL_BALANCE, 0);
 
@@ -42,8 +43,14 @@ async function getCurrentBalance(): Promise<number> {
     0
   );
 
-  // Total income = iuran + event donations
-  const totalIncome = totalIuranIncome + totalEventDonations;
+  // Total dana masuk (manual fund injections)
+  const danaMasukResult = await danaMasukModel.aggregate([
+    { $group: { _id: null, total: { $sum: "$nominal" } } },
+  ]);
+  const totalDanaMasuk = danaMasukResult.length > 0 ? danaMasukResult[0].total : 0;
+
+  // Total income = iuran + event donations + dana masuk
+  const totalIncome = totalIuranIncome + totalEventDonations + totalDanaMasuk;
 
   // Total expenses
   const totalExpenseResult = await pengeluaranModel.aggregate([
@@ -146,8 +153,14 @@ export default {
         };
       });
 
-      // Total income = iuran + ALL event donations (not just surplus)
-      const totalIncome = totalIuranIncome + totalEventDonations;
+      // Total dana masuk
+      const danaMasukResult = await danaMasukModel.aggregate([
+        { $group: { _id: null, total: { $sum: "$nominal" } } },
+      ]);
+      const totalDanaMasuk = danaMasukResult.length > 0 ? danaMasukResult[0].total : 0;
+
+      // Total income = iuran + ALL event donations + dana masuk
+      const totalIncome = totalIuranIncome + totalEventDonations + totalDanaMasuk;
 
       return response.success(
         res,
@@ -156,6 +169,7 @@ export default {
           total_income: totalIncome,
           total_iuran_income: totalIuranIncome,
           total_event_donations: totalEventDonations,
+          total_dana_masuk: totalDanaMasuk,
           total_expense: totalExpense,
           balance: balance,
           events: eventSummaries,

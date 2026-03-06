@@ -8,6 +8,7 @@ export type TInventory = z.infer<typeof InventoryDTO>;
 
 export interface Inventory extends Omit<TInventory, ""> {
   createdBy?: Types.ObjectId;
+  image_url?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -25,6 +26,11 @@ const inventorySchema = new Schema(
       type: Schema.Types.String,
       required: true,
       minLength: 0,
+    },
+    image_url: {
+      type: Schema.Types.String,
+      required: false,
+      default: null,
     },
     createdBy: {
       type: Schema.Types.ObjectId,

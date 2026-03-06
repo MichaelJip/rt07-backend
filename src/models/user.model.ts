@@ -16,8 +16,8 @@ const userSchema = new Schema(
   {
     email: {
       type: Schema.Types.String,
-      required: true,
-      unique: true,
+      required: false,
+      sparse: true, // allows null/undefined to not conflict with unique index
     },
     username: {
       type: Schema.Types.String,
@@ -35,6 +35,7 @@ const userSchema = new Schema(
         ROLES.RT,
         ROLES.RW,
         ROLES.BENDAHARA,
+        ROLES.SEKRETARIS,
         ROLES.SATPAM,
         ROLES.WARGA,
       ],
@@ -60,7 +61,7 @@ const userSchema = new Schema(
     },
     status: {
       type: Schema.Types.String,
-      enum: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.AWAY],
+      enum: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.AWAY, USER_STATUS.MOVED],
       default: USER_STATUS.ACTIVE,
     },
     statusNote: {

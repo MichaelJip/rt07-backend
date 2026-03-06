@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ROLES } from "./constants";
 
 export const UserDTO = z.object({
-  email: z.email().min(1, "Email is required"),
+  email: z.email().min(1, "Email is required").optional().or(z.literal("")),
   username: z.string().min(5, "Name length min 5"),
   password: z.string().min(8, "Password length min 8"),
   role: z.enum([
@@ -12,6 +12,7 @@ export const UserDTO = z.object({
     ROLES.SATPAM,
     ROLES.WARGA,
     ROLES.BENDAHARA,
+    ROLES.SEKRETARIS,
   ]),
   address: z.string().optional(),
   position: z.string().optional(),
@@ -71,9 +72,11 @@ export const PushTokenDTO = z.object({
 export const InventoryDTO = z.object({
   name: z.string().min(1, "Name length min 1"),
   quantity: z.string(),
+  image_url: z.string().optional(),
 });
 
 export const InventoryUpdateDTO = z.object({
   name: z.string().min(1, "Name length min 1").optional(),
   quantity: z.string().optional(),
+  image_url: z.string().optional(),
 });

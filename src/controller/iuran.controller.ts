@@ -149,47 +149,76 @@ export default {
         return;
       }
 
-      // Calculate amount per period
-      const amountPerPeriod = REQUIRED_AMOUNT_PER_PERIOD;
-
+      // Validate period range: max currentYear + 2
       const now = new Date();
+      const maxYear = now.getFullYear() + 2;
+      for (const period of periods) {
+        const periodYear = parseInt(period.split("-")[0]);
+        if (isNaN(periodYear) || periodYear > maxYear) {
+          response.error(
+            res,
+            `Period ${period} exceeds maximum allowed year (${maxYear})`,
+            "validation error"
+          );
+          return;
+        }
+      }
+
+      const amountPerPeriod = REQUIRED_AMOUNT_PER_PERIOD;
       const paymentDate = payment_date ? new Date(payment_date) : now;
       const updatedIuran = [];
+      const createdIuran = [];
       const errors = [];
 
-      // Update each period
+      // Upsert each period: update if exists, create if not
       for (const period of periods) {
         try {
-          // Find unpaid iuran for this user and period
           const iuran = await iuranModel.findOne({
             user: new Types.ObjectId(userId),
-            period: period,
-            status: IURAN_STATUS.UNPAID,
+            period,
+            type: "regular",
           });
 
-          if (!iuran) {
-            errors.push(`Period ${period}: No unpaid iuran found`);
-            continue;
-          }
-
-          // Update to paid
-          const result = await iuranModel.findByIdAndUpdate(
-            iuran._id,
-            {
-              status: IURAN_STATUS.PAID,
+          if (iuran) {
+            if (iuran.status === IURAN_STATUS.PAID) {
+              errors.push(`Period ${period}: Already paid`);
+              continue;
+            }
+            // Update existing iuran to paid
+            const result = await iuranModel.findByIdAndUpdate(
+              iuran._id,
+              {
+                status: IURAN_STATUS.PAID,
+                amount: String(amountPerPeriod),
+                payment_date: paymentDate,
+                payment_method: payment_method || null,
+                note: note || null,
+                confirmed_at: now,
+                confirmed_by: bendaharaId,
+                recorded_by: bendaharaId,
+                is_imported: false,
+              },
+              { new: true }
+            );
+            updatedIuran.push(result);
+          } else {
+            // Create new iuran for future period and mark PAID immediately
+            const result = await iuranModel.create({
+              user: new Types.ObjectId(userId),
+              period,
               amount: String(amountPerPeriod),
+              type: "regular",
+              status: IURAN_STATUS.PAID,
               payment_date: paymentDate,
               payment_method: payment_method || null,
               note: note || null,
               confirmed_at: now,
-              confirmed_by: bendaharaId,
-              recorded_by: bendaharaId,
-              is_imported: false, // Set to false so it counts as new income
-            },
-            { new: true }
-          );
-
-          updatedIuran.push(result);
+              confirmed_by: new Types.ObjectId(bendaharaId),
+              recorded_by: new Types.ObjectId(bendaharaId),
+              is_imported: false,
+            });
+            createdIuran.push(result);
+          }
         } catch (error: any) {
           errors.push(`Period ${period}: ${error.message}`);
         }
@@ -198,12 +227,15 @@ export default {
       return response.success(
         res,
         {
-          success: updatedIuran.length,
+          success: updatedIuran.length + createdIuran.length,
+          updated: updatedIuran.length,
+          created: createdIuran.length,
           failed: errors.length,
           updatedIuran,
+          createdIuran,
           errors: errors.length > 0 ? errors : null,
         },
-        `Successfully recorded ${updatedIuran.length} payment(s)`
+        `Successfully recorded ${updatedIuran.length + createdIuran.length} payment(s)`
       );
     } catch (error) {
       response.error(res, error, "failed to record payment");
@@ -958,4 +990,5 @@ export default {
       return;
     }
   },
+
 };

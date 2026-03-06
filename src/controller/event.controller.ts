@@ -7,6 +7,7 @@ import pengeluaranModel from "../models/pengeluaran.model";
 import { generateEventReport } from "../utils/excelReportGenerator";
 import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
 import { ROLES } from "../utils/constants";
+import { getCurrentBalance } from "./keuangan.controller";
 
 export default {
   async create(req: IReqUser, res: Response): Promise<void> {
@@ -204,7 +205,7 @@ export default {
   async addDonation(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { donor_name, amount, date } = req.body;
+      const { donor_name, amount, date, address } = req.body;
       const userRole = req.user?.role;
 
       if (!mongoose.isValidObjectId(id)) {
@@ -240,6 +241,7 @@ export default {
         donor_name,
         amount: String(amount),
         date: date ? new Date(date) : new Date(),
+        address: address || null,
       });
 
       // Auto-set status to active when first donation is added
@@ -488,6 +490,196 @@ export default {
     } catch (error) {
       response.error(res, error, "failed to download event report");
       return;
+    }
+  },
+
+  async updateDonation(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id, donationId } = req.params;
+      const { donor_name, amount, date, address } = req.body;
+      const userRole = req.user?.role;
+
+      if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(donationId)) {
+        response.error(res, "invalid id", "validation error");
+        return;
+      }
+
+      const event = await eventModel.findById(id);
+      if (!event) return response.notFound(res, "event not found");
+
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
+        response.error(res, "cannot update donation in completed event", "validation error");
+        return;
+      }
+
+      const donation = (event.donations as any).id(donationId);
+      if (!donation) return response.notFound(res, "donation not found");
+
+      if (donor_name !== undefined) donation.donor_name = donor_name;
+      if (amount !== undefined) donation.amount = String(amount);
+      if (date !== undefined) donation.date = new Date(date);
+      if (address !== undefined) donation.address = address;
+
+      await event.save();
+      return response.success(res, event, "success update donation");
+    } catch (error) {
+      response.error(res, error, "failed to update donation");
+    }
+  },
+
+  async deleteDonation(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id, donationId } = req.params;
+      const userRole = req.user?.role;
+
+      if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(donationId)) {
+        response.error(res, "invalid id", "validation error");
+        return;
+      }
+
+      const event = await eventModel.findById(id);
+      if (!event) return response.notFound(res, "event not found");
+
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
+        response.error(res, "cannot delete donation in completed event", "validation error");
+        return;
+      }
+
+      const donation = (event.donations as any).id(donationId);
+      if (!donation) return response.notFound(res, "donation not found");
+
+      donation.deleteOne();
+      await event.save();
+      return response.success(res, event, "success delete donation");
+    } catch (error) {
+      response.error(res, error, "failed to delete donation");
+    }
+  },
+
+  async updateExpense(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id, expenseId } = req.params;
+      const { description, amount, date, category } = req.body;
+      const userRole = req.user?.role;
+
+      if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(expenseId)) {
+        response.error(res, "invalid id", "validation error");
+        return;
+      }
+
+      const event = await eventModel.findById(id);
+      if (!event) return response.notFound(res, "event not found");
+
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
+        response.error(res, "cannot update expense in completed event", "validation error");
+        return;
+      }
+
+      const expense = (event.expenses as any).id(expenseId);
+      if (!expense) return response.notFound(res, "expense not found");
+
+      const oldAmount = Number(expense.amount);
+      const newAmount = amount !== undefined ? Number(amount) : oldAmount;
+
+      // If event is completed, the expense has a linked pengeluaran - check kas
+      if (event.status === "completed" && newAmount !== oldAmount) {
+        const difference = newAmount - oldAmount;
+        if (difference > 0) {
+          const currentBalance = await getCurrentBalance();
+          if (difference > currentBalance) {
+            response.error(
+              res,
+              {
+                message: "Update expense melebihi saldo kas yang tersedia",
+                current_balance: currentBalance,
+                old_amount: oldAmount,
+                new_amount: newAmount,
+                additional_required: difference,
+              },
+              "insufficient balance"
+            );
+            return;
+          }
+        }
+
+        // Update linked pengeluaran record
+        const linkedPengeluaran = await pengeluaranModel.findOne({ event_id: id });
+        if (linkedPengeluaran) {
+          // Find the matching item by name
+          const itemIndex = linkedPengeluaran.items.findIndex(
+            (item: any) => item.name === expense.description
+          );
+          if (itemIndex >= 0) {
+            linkedPengeluaran.items[itemIndex].price = newAmount;
+            linkedPengeluaran.total = linkedPengeluaran.items.reduce(
+              (sum: number, item: any) => sum + item.price,
+              0
+            );
+            await linkedPengeluaran.save();
+          }
+        }
+      }
+
+      if (description !== undefined) expense.description = description;
+      if (amount !== undefined) expense.amount = String(newAmount);
+      if (date !== undefined) expense.date = new Date(date);
+      if (category !== undefined) expense.category = category;
+
+      await event.save();
+      return response.success(res, event, "success update expense");
+    } catch (error) {
+      response.error(res, error, "failed to update expense");
+    }
+  },
+
+  async deleteExpense(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id, expenseId } = req.params;
+      const userRole = req.user?.role;
+
+      if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(expenseId)) {
+        response.error(res, "invalid id", "validation error");
+        return;
+      }
+
+      const event = await eventModel.findById(id);
+      if (!event) return response.notFound(res, "event not found");
+
+      if (event.status === "completed" && userRole !== ROLES.ADMIN) {
+        response.error(res, "cannot delete expense in completed event", "validation error");
+        return;
+      }
+
+      const expense = (event.expenses as any).id(expenseId);
+      if (!expense) return response.notFound(res, "expense not found");
+
+      // If event is completed, update linked pengeluaran (reduce total)
+      if (event.status === "completed") {
+        const linkedPengeluaran = await pengeluaranModel.findOne({ event_id: id });
+        if (linkedPengeluaran) {
+          const itemIndex = linkedPengeluaran.items.findIndex(
+            (item: any) => item.name === expense.description
+          );
+          if (itemIndex >= 0) {
+            linkedPengeluaran.items.splice(itemIndex, 1);
+            linkedPengeluaran.total = linkedPengeluaran.items.reduce(
+              (sum: number, item: any) => sum + item.price,
+              0
+            );
+            if (linkedPengeluaran.items.length === 0) {
+              await pengeluaranModel.findByIdAndDelete(linkedPengeluaran._id);
+            } else {
+              await linkedPengeluaran.save();
+            }
+          }
+        }
+      }
+
+      expense.deleteOne();
+      await event.save();
+      return response.success(res, event, "success delete expense");
+    } catch (error) {
+      response.error(res, error, "failed to delete expense");
     }
   },
 };

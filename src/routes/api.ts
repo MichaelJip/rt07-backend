@@ -9,6 +9,7 @@ import mediaMiddleware from "../middleware/media.middleware";
 import { ROLES } from "../utils/constants";
 import inventoryController from "../controller/inventory.controller";
 import eventController from "../controller/event.controller";
+import danaMasukController from "../controller/danaMasuk.controller";
 
 const router = express.Router();
 
@@ -130,19 +131,21 @@ router.delete(
   keuanganController.deletePengeluaran
 );
 
-//Inventory
-router.get("/inventory", authMiddleware, inventoryController.findAll);
-router.get("/inventory/:id", authMiddleware, inventoryController.detail);
-router.post("/inventory", [
-  authMiddleware,
-  aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
-  inventoryController.create,
-]);
-router.patch("/inventory/:id", [
-  authMiddleware,
-  aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
-  inventoryController.update,
-]);
+//Inventory - GET list is public for rt07-website display
+router.get("/inventory", inventoryController.findAll);
+router.get("/inventory/:id", inventoryController.detail);
+router.post(
+  "/inventory",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT])],
+  mediaMiddleware.single("image_url"),
+  inventoryController.create
+);
+router.patch(
+  "/inventory/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT])],
+  mediaMiddleware.single("image_url"),
+  inventoryController.update
+);
 router.delete("/inventory/:id", [
   authMiddleware,
   aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.RT]),
@@ -198,6 +201,22 @@ router.post(
   ],
   eventController.addDonation
 );
+router.patch(
+  "/event/:id/donation/:donationId",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  eventController.updateDonation
+);
+router.delete(
+  "/event/:id/donation/:donationId",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  eventController.deleteDonation
+);
 router.post(
   "/event/:id/expense",
   [
@@ -206,6 +225,22 @@ router.post(
   ],
   mediaMiddleware.any(),
   eventController.addExpense
+);
+router.patch(
+  "/event/:id/expense/:expenseId",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  eventController.updateExpense
+);
+router.delete(
+  "/event/:id/expense/:expenseId",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  eventController.deleteExpense
 );
 router.post(
   "/event/:id/complete",
@@ -222,6 +257,19 @@ router.get(
     aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
   ],
   eventController.downloadEventReport
+);
+
+// Dana Masuk (Fund Injection) - GET is public, POST/DELETE admin only
+router.get("/dana-masuk", danaMasukController.findAll);
+router.post(
+  "/dana-masuk",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA])],
+  danaMasukController.create
+);
+router.delete(
+  "/dana-masuk/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  danaMasukController.delete
 );
 
 // Settings (Admin only)

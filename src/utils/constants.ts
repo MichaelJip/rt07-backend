@@ -19,4 +19,5 @@ export enum USER_STATUS {
   ACTIVE = "active",
   INACTIVE = "inactive", // Rumah kosong
   AWAY = "away", // Sedang pergi sementara
+  MOVED = "moved", // Pindah - akun dinonaktifkan, iuran tidak dibuat
 }

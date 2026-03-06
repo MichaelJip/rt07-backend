@@ -7,6 +7,7 @@ export interface Donation {
   donor_name: string;
   amount: string;
   date: Date;
+  address?: string;
 }
 
 export interface EventExpense {
@@ -48,6 +49,10 @@ const DonationSchema = new Schema({
   date: {
     type: Date,
     default: Date.now,
+  },
+  address: {
+    type: String,
+    default: null,
   },
 });
 

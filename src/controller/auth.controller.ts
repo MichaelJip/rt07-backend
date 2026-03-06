@@ -28,7 +28,7 @@ export default {
     const image_url = req.file ? `/uploads/${req.file.filename}` : "";
 
     const parsed = UserDTO.safeParse({
-      email,
+      email: email || undefined,
       username,
       password,
       role,
@@ -45,6 +45,13 @@ export default {
 
     const data = parsed.data;
 
+    // Email required for non-WARGA roles
+    const wargaRoles = [ROLES.WARGA];
+    if (!data.email && !wargaRoles.includes(data.role as any)) {
+      response.error(res, "Email wajib diisi untuk role selain warga", "validation error");
+      return;
+    }
+
     try {
       const existingUsername = await userModel.findOne({
         username: data.username,
@@ -54,13 +61,21 @@ export default {
         return;
       }
 
-      const existingEmail = await userModel.findOne({ email: data.email });
-      if (existingEmail) {
-        response.conflict(res, "Email is already taken");
-        return;
+      // Only check email uniqueness if email is provided
+      if (data.email) {
+        const existingEmail = await userModel.findOne({ email: data.email });
+        if (existingEmail) {
+          response.conflict(res, "Email is already taken");
+          return;
+        }
       }
 
-      const result = await userModel.create(data);
+      const createData: any = { ...data };
+      if (!createData.email) {
+        delete createData.email; // Don't store empty email
+      }
+
+      const result = await userModel.create(createData) as any;
 
       // Create iuran from current month until end of year if user is not ADMIN and is ACTIVE
       if (result.role !== ROLES.ADMIN && result.status === USER_STATUS.ACTIVE) {
@@ -106,11 +121,25 @@ export default {
     try {
       await UserLoginDTO.safeParse({ identifier, password });
 
+      // Find by username or email (email may not exist for warga)
       const userByIdentifier = await userModel.findOne({
-        $or: [{ email: identifier }, { username: identifier }],
-      });
+        $or: [
+          { username: identifier },
+          { email: identifier },
+        ],
+      } as any);
 
       if (!userByIdentifier) {
+        return response.unauthorized(res, "user not found");
+      }
+
+      // Block login for moved users
+      if (userByIdentifier.status === USER_STATUS.MOVED) {
+        return response.unauthorized(res, "Akun Anda telah dinonaktifkan karena status pindah");
+      }
+
+      // Block login for deleted users
+      if (userByIdentifier.isDeleted) {
         return response.unauthorized(res, "user not found");
       }
 
@@ -215,13 +244,19 @@ export default {
         ])
       );
 
-      // Add unpaid periods to each user
+      // Add unpaid periods to each user, filter sensitive data for public endpoint
       const resultWithUnpaid = paginatedResult.map((user: any) => {
         const unpaidData = unpaidMap.get(user._id.toString());
+        // Only expose safe public fields
         return {
-          ...user,
+          _id: user._id,
+          username: user.username,
+          address: user.address,
+          phone_number: user.phone_number,
+          status: user.status,
+          role: user.role,
+          image_url: user.image_url,
           unpaidIuranCount: unpaidData?.count || 0,
-          unpaidIuranPeriods: unpaidData?.periods || [],
         };
       });
 
@@ -420,7 +455,7 @@ export default {
         return;
       }
 
-      const validStatuses = ["active", "inactive", "away"];
+      const validStatuses = ["active", "inactive", "away", "moved"];
       if (!status || !validStatuses.includes(status)) {
         response.error(
           res,
@@ -451,7 +486,16 @@ export default {
         )
         .select("-password");
 
-      // If user becomes active from inactive/away, create missing iuran for remaining months
+      // If user becomes moved/inactive, delete all UNPAID iuran
+      if ((status === "moved" || status === "inactive") && oldStatus === "active") {
+        const deleteResult = await iuranModel.deleteMany({
+          user: id,
+          status: { $ne: IURAN_STATUS.PAID },
+        });
+        console.log(`User ${user.username} status changed to ${status}, removed ${deleteResult.deletedCount} unpaid iuran records`);
+      }
+
+      // If user becomes active from inactive/away/moved, create missing iuran for remaining months
       if (status === "active" && oldStatus !== "active") {
         const now = new Date();
         const currentYear = now.getFullYear();
@@ -642,10 +686,11 @@ export default {
           rowData;
         const rowErrors: string[] = [];
 
-        // Validation
-        if (!email) {
-          rowErrors.push("Email wajib diisi");
-        } else if (!email.includes("@")) {
+        // Validation: email required for non-warga roles
+        const isWargaRole = !role || role === ROLES.WARGA;
+        if (!isWargaRole && !email) {
+          rowErrors.push("Email wajib diisi untuk role selain warga");
+        } else if (email && !email.includes("@")) {
           rowErrors.push("Format email tidak valid");
         }
 
@@ -686,7 +731,7 @@ export default {
         }
 
         // Check for existing user
-        const existingEmail = await userModel.findOne({ email });
+        const existingEmail = email ? await userModel.findOne({ email }) : null;
         const existingUsername = await userModel.findOne({ username });
 
         if (existingEmail || existingUsername) {
@@ -702,14 +747,16 @@ export default {
 
         // Create user
         try {
-          const newUser = await userModel.create({
-            email,
+          const userData: any = {
             username,
             password: "password123", // Default password
             role,
             address,
             phone_number,
-          });
+          };
+          if (email) userData.email = email;
+
+          const newUser = await userModel.create(userData) as any;
 
           // Create iuran for non-admin users
           if (newUser.role !== ROLES.ADMIN) {
