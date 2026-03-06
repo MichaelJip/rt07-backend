@@ -12,7 +12,7 @@ import { generateToken } from "../utils/jwt";
 import { SECRET } from "../utils/env";
 import jwt from "jsonwebtoken";
 import { IReqUser } from "../utils/interface";
-import { QueryFilter } from "mongoose";
+import mongoose, { QueryFilter } from "mongoose";
 import fs from "fs";
 import path from "path";
 import iuranModel from "../models/iuran.model";
@@ -477,6 +477,69 @@ export default {
     } catch (error) {
       console.error("Delete user error:", error);
       response.error(res, error, "failed to delete user");
+      return;
+    }
+  },
+
+  async updateUser(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!id || !mongoose.isValidObjectId(id)) {
+        response.error(res, "invalid user id", "validation error");
+        return;
+      }
+
+      const user = await userModel.findById(id);
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      const { username, email, address, phone_number, role } = req.body;
+      const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+
+      // Check username uniqueness if changing
+      if (username && username !== user.username) {
+        const existing = await userModel.findOne({ username, _id: { $ne: id } });
+        if (existing) {
+          response.conflict(res, "Username is already taken");
+          return;
+        }
+      }
+
+      // Check email uniqueness if changing
+      if (email && email !== user.email) {
+        const existing = await userModel.findOne({ email, _id: { $ne: id } });
+        if (existing) {
+          response.conflict(res, "Email is already taken");
+          return;
+        }
+      }
+
+      // If new image, delete old one
+      if (image_url && user.image_url) {
+        const oldPath = path.join(process.cwd(), user.image_url);
+        if (fs.existsSync(oldPath)) {
+          try { fs.unlinkSync(oldPath); } catch {}
+        }
+      }
+
+      const updateData: Record<string, any> = {};
+      if (username !== undefined) updateData.username = username;
+      if (email !== undefined) updateData.email = email || null;
+      if (address !== undefined) updateData.address = address;
+      if (phone_number !== undefined) updateData.phone_number = phone_number;
+      if (role !== undefined) updateData.role = role;
+      if (image_url !== undefined) updateData.image_url = image_url;
+
+      const result = await userModel
+        .findByIdAndUpdate(id, updateData, { new: true })
+        .select("-password");
+
+      return response.success(res, result, "user updated successfully");
+    } catch (error) {
+      response.error(res, error, "failed to update user");
       return;
     }
   },

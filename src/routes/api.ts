@@ -49,6 +49,12 @@ router.delete(
   authController.deleteUser
 );
 router.patch(
+  "/user/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  mediaMiddleware.single("image_url"),
+  authController.updateUser
+);
+router.patch(
   "/user/:id/status",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   authController.updateUserStatus
