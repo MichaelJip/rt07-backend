@@ -28,7 +28,7 @@ router.patch(
   mediaMiddleware.single("image_url"),
   authController.updateProfile
 );
-// router.get("/user", authMiddleware, authController.findAll);
+// Public: returns safe fields only. With ?full=true + auth token (admin/bendahara/etc): returns full data
 router.get("/user", authController.findAll);
 // User Import/Export
 router.get("/user/template/download", authController.downloadTemplate);

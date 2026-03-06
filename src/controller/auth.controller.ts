@@ -176,7 +176,31 @@ export default {
   },
   async findAll(req: IReqUser, res: Response): Promise<void> {
     try {
-      const { limit = 10, page = 1, search, status, includeDeleted } = req.query;
+      const { limit = 10, page = 1, search, status, includeDeleted, full } = req.query;
+
+      // ?full=true requires a valid auth token with privileged role
+      const isFullRequest = full === "true";
+      if (isFullRequest) {
+        // Manually verify token if present
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!token) {
+          response.unauthorized(res, "Authentication required for full data");
+          return;
+        }
+        try {
+          const jwt = require("jsonwebtoken");
+          const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+          const privilegedRoles = [ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS, ROLES.RT, ROLES.RW];
+          if (!privilegedRoles.includes(decoded.role)) {
+            response.unauthorized(res, "Insufficient permissions for full data");
+            return;
+          }
+        } catch {
+          response.unauthorized(res, "Invalid or expired token");
+          return;
+        }
+      }
 
       let query: QueryFilter<User> = {};
 
@@ -244,11 +268,10 @@ export default {
         ])
       );
 
-      // Add unpaid periods to each user, filter sensitive data for public endpoint
+      // Add unpaid periods to each user
       const resultWithUnpaid = paginatedResult.map((user: any) => {
         const unpaidData = unpaidMap.get(user._id.toString());
-        // Only expose safe public fields
-        return {
+        const baseFields = {
           _id: user._id,
           username: user.username,
           address: user.address,
@@ -259,6 +282,17 @@ export default {
           unpaidIuranCount: unpaidData?.count || 0,
           unpaidIuranPeriods: unpaidData?.periods || [],
         };
+
+        if (isFullRequest) {
+          // Return full data for admin CMS
+          return {
+            ...user,
+            unpaidIuranCount: unpaidData?.count || 0,
+            unpaidIuranPeriods: unpaidData?.periods || [],
+          };
+        }
+
+        return baseFields;
       });
 
       const count = allResults.length;
