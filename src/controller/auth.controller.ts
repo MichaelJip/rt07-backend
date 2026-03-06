@@ -9,6 +9,8 @@ import userModel, { User } from "../models/user.model";
 import response from "../utils/response";
 import { encrypt } from "../utils/encryption";
 import { generateToken } from "../utils/jwt";
+import { SECRET } from "../utils/env";
+import jwt from "jsonwebtoken";
 import { IReqUser } from "../utils/interface";
 import { QueryFilter } from "mongoose";
 import fs from "fs";
@@ -189,8 +191,7 @@ export default {
           return;
         }
         try {
-          const jwt = require("jsonwebtoken");
-          const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+          const decoded: any = jwt.verify(token, SECRET);
           const privilegedRoles = [ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS, ROLES.RT, ROLES.RW];
           if (!privilegedRoles.includes(decoded.role)) {
             response.unauthorized(res, "Insufficient permissions for full data");
