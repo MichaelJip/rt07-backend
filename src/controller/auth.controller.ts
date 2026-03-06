@@ -257,6 +257,7 @@ export default {
           role: user.role,
           image_url: user.image_url,
           unpaidIuranCount: unpaidData?.count || 0,
+          unpaidIuranPeriods: unpaidData?.periods || [],
         };
       });
 
