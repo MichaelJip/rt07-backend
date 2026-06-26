@@ -4,44 +4,34 @@ import cors from "cors";
 import bodyParser = require("body-parser");
 import router from "./routes/api";
 import errorMiddleware from "./middleware/error.middleware";
-import { startMonthlyIuranGeneration } from "./config/generateIuran";
-import path from "path";
 
-async function init() {
-  try {
-    const result = await connect();
-    console.log("database status: ", result);
+const app = express();
 
-    //Express
-    const app = express();
-    const PORT = 3000;
+app.use(cors());
+app.use(bodyParser.json());
 
-    //Middleware
-    app.use(cors());
-    app.use(bodyParser.json());
-    app.get("/", (req, res) => {
-      res.status(200).json({
-        message: "server is up",
-        data: null,
-      });
-    });
+app.get("/", (req, res) => {
+  res.status(200).json({
+    message: "server is up",
+    data: null,
+  });
+});
 
-    //API
-    app.use("/api", router);
+app.use("/api", router);
+app.use(errorMiddleware.serverRoute());
+app.use(errorMiddleware.serverError());
 
-    // serve static files
-    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-    app.use("/receipts", express.static(path.join(process.cwd(), "receipts")));
+connect().then(() => {
+  console.log("Database connected!");
+}).catch((err) => {
+  console.error("Database connection failed:", err);
+});
 
-    app.use(errorMiddleware.serverRoute());
-    app.use(errorMiddleware.serverError());
-    startMonthlyIuranGeneration();
-
-    app.listen(PORT, () => {
-      console.log(`Server is up at PORT ${PORT}`);
-    });
-  } catch (error) {
-    console.log(error);
-  }
+// Local dev only
+if (process.env.NODE_ENV !== "production") {
+  const { startMonthlyIuranGeneration } = require("./config/generateIuran");
+  startMonthlyIuranGeneration();
+  app.listen(3000, () => console.log("Server is up at PORT 3000"));
 }
-init();
+
+export default app;
