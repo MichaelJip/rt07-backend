@@ -1,27 +1,38 @@
 import multer from "multer";
-import path from "path";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../utils/cloudinary";
 
-const storage = multer.diskStorage({
-  destination: path.join(process.cwd(), "uploads"),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname));
-  },
+const imageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "rt-backend",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    resource_type: "image",
+  } as any,
 });
 
-const upload = multer({
-  storage,
+const imageUpload = multer({
+  storage: imageStorage,
   limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+// Excel / spreadsheet imports stay in memory (never go to Cloudinary)
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 export default {
   single(fieldName: string) {
-    return upload.single(fieldName);
+    return imageUpload.single(fieldName);
   },
   array(fieldName: string, maxCount?: number) {
-    return upload.array(fieldName, maxCount);
+    return imageUpload.array(fieldName, maxCount);
   },
   any() {
-    return upload.any();
+    return imageUpload.any();
+  },
+  excelSingle(fieldName: string) {
+    return excelUpload.single(fieldName);
   },
 };

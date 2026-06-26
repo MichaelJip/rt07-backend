@@ -1,17 +1,16 @@
 import { Response, Request } from "express";
-import fs from "fs";
-import path from "path";
 import { InventoryDTO, InventoryUpdateDTO } from "../utils/zodSchema";
 import response from "../utils/response";
 import inventoryModel, { Inventory } from "../models/inventory.model";
 import { QueryFilter } from "mongoose";
 import { IReqUser } from "../utils/interface";
+import { deleteCloudinaryImage } from "../utils/cloudinary";
 
 export default {
   async create(req: Request, res: Response): Promise<void> {
     const { name, quantity } = req.body;
     const userId = (req as IReqUser).user?.id;
-    const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+    const image_url = req.file ? (req.file as any).path : undefined;
 
     const parsed = InventoryDTO.safeParse({
       name,
@@ -74,7 +73,7 @@ export default {
   async update(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
     const { name, quantity } = req.body;
-    const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+    const image_url = req.file ? (req.file as any).path : undefined;
 
     const parsed = InventoryUpdateDTO.safeParse({
       name,
@@ -114,6 +113,10 @@ export default {
         }
       }
 
+      if (image_url && existingInventory.image_url) {
+        await deleteCloudinaryImage(existingInventory.image_url);
+      }
+
       const result = await inventoryModel.findByIdAndUpdate(id, data, {
         new: true,
       });
@@ -138,17 +141,8 @@ export default {
         return;
       }
 
-      // Delete image file if exists
       if (result.image_url) {
-        try {
-          const filename = result.image_url.replace("/uploads/", "");
-          const filePath = path.join(process.cwd(), "uploads", filename);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        } catch (imgError) {
-          console.error("Failed to delete inventory image:", imgError);
-        }
+        await deleteCloudinaryImage(result.image_url);
       }
 
       response.success(res, result, "success delete inventory");

@@ -13,8 +13,7 @@ import { SECRET } from "../utils/env";
 import jwt from "jsonwebtoken";
 import { IReqUser } from "../utils/interface";
 import mongoose, { QueryFilter } from "mongoose";
-import fs from "fs";
-import path from "path";
+import { deleteCloudinaryImage } from "../utils/cloudinary";
 import iuranModel from "../models/iuran.model";
 import { IURAN_STATUS, ROLES, USER_STATUS } from "../utils/constants";
 import ExcelJS from "exceljs";
@@ -27,7 +26,7 @@ export default {
   async register(req: Request, res: Response): Promise<void> {
     const { email, username, password, role, address, phone_number, position } =
       req.body;
-    const image_url = req.file ? `/uploads/${req.file.filename}` : "";
+    const image_url = req.file ? (req.file as any).path : "";
 
     const parsed = UserDTO.safeParse({
       email: email || undefined,
@@ -358,7 +357,7 @@ export default {
       }
 
       const { username, address, position, phone_number } = req.body;
-      const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+      const image_url = req.file ? (req.file as any).path : undefined;
 
       console.log("Update Profile Request:");
       console.log("- Body:", { username, address, position, phone_number });
@@ -392,22 +391,11 @@ export default {
         }
       }
 
-      // If new image is uploaded, delete the old one
+      // If new image is uploaded, delete the old one from Cloudinary
       if (image_url) {
         const currentUser = await userModel.findById(userId);
         if (currentUser?.image_url) {
-          const oldImagePath = path.join(process.cwd(), currentUser.image_url);
-          console.log("Attempting to delete old image:", oldImagePath);
-          if (fs.existsSync(oldImagePath)) {
-            try {
-              fs.unlinkSync(oldImagePath);
-              console.log("Old image deleted successfully");
-            } catch (error) {
-              console.error("Failed to delete old image:", error);
-            }
-          } else {
-            console.log("Old image file does not exist");
-          }
+          await deleteCloudinaryImage(currentUser.image_url);
         }
       }
 
@@ -497,7 +485,7 @@ export default {
       }
 
       const { username, email, address, phone_number, role } = req.body;
-      const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
+      const image_url = req.file ? (req.file as any).path : undefined;
 
       // Check username uniqueness if changing
       if (username && username !== user.username) {
@@ -517,12 +505,9 @@ export default {
         }
       }
 
-      // If new image, delete old one
+      // If new image, delete old one from Cloudinary
       if (image_url && user.image_url) {
-        const oldPath = path.join(process.cwd(), user.image_url);
-        if (fs.existsSync(oldPath)) {
-          try { fs.unlinkSync(oldPath); } catch {}
-        }
+        await deleteCloudinaryImage(user.image_url);
       }
 
       const updateData: Record<string, any> = {};

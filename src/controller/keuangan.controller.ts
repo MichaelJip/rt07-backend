@@ -1,7 +1,5 @@
 import { Response } from "express";
-import fs from "fs";
 import mongoose from "mongoose";
-import path from "path";
 import eventModel from "../models/event.model";
 import iuranModel from "../models/iuran.model";
 import pengeluaranModel from "../models/pengeluaran.model";
@@ -11,6 +9,7 @@ import { IReqUser } from "../utils/interface";
 import response from "../utils/response";
 import { generateSlug, generateUniqueSlug } from "../utils/slugGenerator";
 import { getSettingValue, SETTINGS_KEYS } from "./settings.controller";
+import { deleteCloudinaryImage } from "../utils/cloudinary";
 
 export async function getCurrentBalance(): Promise<number> {
   // Get initial balance from settings (saldo awal periode)
@@ -69,21 +68,8 @@ export async function getCurrentBalance(): Promise<number> {
   return initialBalance + totalIncome - totalExpense;
 }
 
-function deleteImageFile(imageUrl: string): void {
-  try {
-    // Extract filename from URL (e.g., "/uploads/filename.jpg" -> "filename.jpg")
-    const filename = imageUrl.replace("/uploads/", "");
-    const filePath = path.join(process.cwd(), "uploads", filename);
-
-    // Check if file exists before deleting
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`Deleted old image: ${filePath}`);
-    }
-  } catch (error) {
-    console.error(`Failed to delete image ${imageUrl}:`, error);
-    // Don't throw error - continue even if deletion fails
-  }
+async function deleteImageFile(imageUrl: string): Promise<void> {
+  await deleteCloudinaryImage(imageUrl);
 }
 
 export default {
@@ -217,7 +203,7 @@ export default {
             (file) => file.fieldname === `items[${index}][image]`
           );
           if (matchingFile) {
-            itemData.image_url = `/uploads/${matchingFile.filename}`;
+            itemData.image_url = (matchingFile as any).path;
           }
 
           return itemData;
@@ -248,7 +234,7 @@ export default {
             (file) => file.fieldname === imageFieldName
           );
           if (matchingFile) {
-            item.image_url = `/uploads/${matchingFile.filename}`;
+            item.image_url = (matchingFile as any).path;
           }
 
           items.push(item);
@@ -405,11 +391,11 @@ export default {
 
       // Delete all associated images
       if (result.items && Array.isArray(result.items)) {
-        result.items.forEach((item: any) => {
-          if (item.image_url) {
-            deleteImageFile(item.image_url);
-          }
-        });
+        await Promise.all(
+          result.items
+            .filter((item: any) => item.image_url)
+            .map((item: any) => deleteImageFile(item.image_url))
+        );
       }
 
       return response.success(res, result, "success delete pengeluaran");
@@ -457,6 +443,8 @@ export default {
       if (req.body.items) {
         let items = [];
         if (Array.isArray(req.body.items)) {
+          const oldUrlsToDelete: string[] = [];
+
           // Items are already parsed as array
           items = req.body.items.map((item: any, index: number) => {
             if (!item.name || item.price === undefined || item.price === null) {
@@ -479,12 +467,12 @@ export default {
             );
 
             if (matchingFile) {
-              // New file uploaded - delete old image and use new one
+              // New file uploaded - schedule old image deletion
               const oldImageUrl = existingPengeluaran.items[index]?.image_url;
               if (oldImageUrl) {
-                deleteImageFile(oldImageUrl);
+                oldUrlsToDelete.push(oldImageUrl);
               }
-              itemData.image_url = `/uploads/${matchingFile.filename}`;
+              itemData.image_url = (matchingFile as any).path;
             } else if (item.image_url) {
               // Frontend sent an image_url - keep it
               itemData.image_url = item.image_url;
@@ -497,6 +485,8 @@ export default {
 
             return itemData;
           });
+
+          await Promise.all(oldUrlsToDelete.map(deleteImageFile));
         }
 
         if (items.length === 0) {

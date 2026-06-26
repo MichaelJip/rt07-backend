@@ -305,7 +305,7 @@ export default {
       }
 
       const proof_image_urls = files
-        ? files.map((file) => `/uploads/${file.filename}`)
+        ? files.map((file) => (file as any).path)
         : [];
 
       event.expenses.push({

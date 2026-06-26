@@ -35,7 +35,7 @@ router.get("/user/template/download", authController.downloadTemplate);
 router.post(
   "/user/import",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
-  mediaMiddleware.single("file"),
+  mediaMiddleware.excelSingle("file"),
   authController.importUsers
 );
 router.get(
@@ -98,7 +98,7 @@ router.post(
     authMiddleware,
     aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
   ],
-  mediaMiddleware.single("file"),
+  mediaMiddleware.excelSingle("file"),
   iuranController.importIuran
 );
 
