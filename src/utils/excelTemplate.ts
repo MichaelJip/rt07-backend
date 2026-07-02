@@ -58,11 +58,11 @@ export async function createUserImportTemplate(): Promise<ExcelJS.Buffer> {
     };
   }
 
-  // Add data validation for email (basic format check)
+  // Add data validation for email (basic format check, blank allowed for non-admin)
   for (let i = 2; i <= 1000; i++) {
     dataSheet.getCell(`A${i}`).dataValidation = {
       type: "custom",
-      allowBlank: false,
+      allowBlank: true,
       formulae: ['ISNUMBER(FIND("@",A2))'],
       showErrorMessage: true,
       errorStyle: "warning",
@@ -88,7 +88,7 @@ export async function createUserImportTemplate(): Promise<ExcelJS.Buffer> {
     "",
     "CARA PENGGUNAAN:",
     "1. Isi data pengguna pada sheet 'Data Pengguna'",
-    "2. Email: Harus unik dan mengandung karakter @",
+    "2. Email: Wajib diisi HANYA untuk role admin. Untuk role lain boleh dikosongkan. Jika diisi harus unik dan mengandung @",
     "3. Nama Pengguna: Harus unik, tidak boleh sama dengan pengguna lain",
     "4. Peran: Pilih dari dropdown (admin, rt, rw, bendahara, sekretaris, satpam, warga)",
     "5. Alamat: Opsional, boleh dikosongkan",
@@ -265,7 +265,7 @@ export async function createIuranImportTemplate(): Promise<ExcelJS.Buffer> {
     "ATURAN IMPORT:",
     "- Jika nama warga SUDAH ADA di sistem: Update data iuran saja",
     "- Jika nama warga BELUM ADA di sistem: Buat user baru dengan:",
-    "  * Email: otomatis dari nama (contoh: tommy@warga.rt)",
+    "  * Email: dikosongkan (null)",
     "  * Username: nama (lowercase, spasi jadi underscore)",
     "  * Password: password123 (default)",
     "  * Role: warga",

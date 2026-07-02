@@ -91,6 +91,12 @@ router.post(
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   iuranController.createYearlyIuran
 );
+// Cleanup: delete all UNPAID regular iuran with period after current month
+router.delete(
+  "/iuran/cleanup-future",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  iuranController.cleanupFutureIuran
+);
 // Iuran Import/Export
 router.post(
   "/iuran/import",

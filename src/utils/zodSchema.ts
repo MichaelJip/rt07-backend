@@ -4,7 +4,7 @@ import { ROLES } from "./constants";
 export const UserDTO = z.object({
   email: z.email().min(1, "Email is required").optional().or(z.literal("")),
   username: z.string().min(5, "Name length min 5"),
-  password: z.string().min(8, "Password length min 8"),
+  password: z.string().min(8, "Password length min 8").optional(),
   role: z.enum([
     ROLES.ADMIN,
     ROLES.RT,

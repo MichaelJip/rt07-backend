@@ -12,14 +12,13 @@ function getCurrentPeriod(): string {
 }
 
 export function startMonthlyIuranGeneration() {
-  // Run on January 1st at 00:01 AM - Create yearly iuran for all users
-  cron.schedule("1 0 1 1 *", async () => {
+  // Run on 1st of every month at 00:01 AM - Create iuran for the current month only
+  cron.schedule("1 0 1 * *", async () => {
     try {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      console.log(`Creating yearly iuran for all users for year ${currentYear}...`);
+      const currentPeriod = getCurrentPeriod();
+      console.log(`Creating monthly iuran for all users for period ${currentPeriod}...`);
 
-      // Find all ACTIVE users EXCEPT ADMIN (skip inactive, away, and deleted users)
+      // Find all ACTIVE users EXCEPT ADMIN (skip inactive, away, moved, and deleted users)
       const users = await userModel
         .find({
           role: { $ne: ROLES.ADMIN },
@@ -33,36 +32,31 @@ export function startMonthlyIuranGeneration() {
       let createdCount = 0;
 
       for (const user of users) {
-        // Create iuran for all 12 months
-        for (let month = 1; month <= 12; month++) {
-          const period = `${currentYear}-${String(month).padStart(2, "0")}`;
+        const exists = await iuranModel.findOne({
+          user: user._id,
+          period: currentPeriod,
+          type: "regular",
+        });
 
-          const exists = await iuranModel.findOne({
+        // Only create if doesn't exist (e.g., already paid in advance)
+        if (!exists) {
+          await iuranModel.create({
             user: user._id,
-            period: period,
+            period: currentPeriod,
+            amount: "50000",
             type: "regular",
+            status: IURAN_STATUS.UNPAID,
+            submitted_at: null,
+            confirmed_at: null,
+            confirmed_by: null,
           });
-
-          // Only create if doesn't exist
-          if (!exists) {
-            await iuranModel.create({
-              user: user._id,
-              period: period,
-              amount: "50000",
-              type: "regular",
-              status: IURAN_STATUS.UNPAID,
-              submitted_at: null,
-              confirmed_at: null,
-              confirmed_by: null,
-            });
-            createdCount++;
-          }
+          createdCount++;
         }
       }
 
-      console.log(`Yearly iuran created: ${createdCount} records for ${users.length} users!`);
+      console.log(`Monthly iuran created: ${createdCount} records for period ${currentPeriod}!`);
 
-      // Send push notification to all non-ADMIN users about new yearly iuran
+      // Send push notification to all non-ADMIN users about new monthly iuran
       if (createdCount > 0) {
         const nonAdminRoles = [
           ROLES.RT,
@@ -75,22 +69,22 @@ export function startMonthlyIuranGeneration() {
 
         for (const role of nonAdminRoles) {
           await notificationService.sendToRole(role, {
-            title: "Iuran Tahunan Baru 📋",
-            body: `Iuran untuk tahun ${currentYear} sudah tersedia. Silahkan lakukan pembayaran.`,
+            title: "Iuran Bulanan Baru 📋",
+            body: `Iuran untuk periode ${currentPeriod} sudah tersedia. Silahkan lakukan pembayaran.`,
             data: {
-              type: "new_yearly_iuran",
-              year: currentYear.toString(),
+              type: "new_monthly_iuran",
+              period: currentPeriod,
             },
           });
         }
         console.log(`Push notifications sent to all non-ADMIN users`);
       }
     } catch (error) {
-      console.error("Error creating yearly iuran:", error);
+      console.error("Error creating monthly iuran:", error);
     }
   });
 
-  console.log("Yearly iuran generation scheduled: January 1st at 00:01 AM");
+  console.log("Monthly iuran generation scheduled: 1st of every month at 00:01 AM");
 
   // Run on 10th of every month at 00:01 AM - Jatuh Tempo Reminder
   cron.schedule("1 0 10 * *", async () => {

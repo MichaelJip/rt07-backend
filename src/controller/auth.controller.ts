@@ -25,18 +25,18 @@ import {
 
 export default {
   async register(req: Request, res: Response): Promise<void> {
-    const { email, username, password, role, address, phone_number, position } =
+    const { email, username, password, role, address, phone_number, position, created_at } =
       req.body;
     const image_url = req.file ? `/uploads/${req.file.filename}` : "";
 
     const parsed = UserDTO.safeParse({
       email: email || undefined,
       username,
-      password,
+      password: password || undefined,
       role,
       address,
       position,
-      phone_number,
+      phone_number: phone_number || undefined,
       image_url,
     });
 
@@ -47,11 +47,52 @@ export default {
 
     const data = parsed.data;
 
-    // Email required for non-WARGA roles
-    const wargaRoles = [ROLES.WARGA];
-    if (!data.email && !wargaRoles.includes(data.role as any)) {
-      response.error(res, "Email wajib diisi untuk role selain warga", "validation error");
+    // Email required only for ADMIN role
+    if (!data.email && data.role === ROLES.ADMIN) {
+      response.error(res, "Email wajib diisi untuk role admin", "validation error");
       return;
+    }
+
+    // Password required only for ADMIN role, others default to password123
+    if (!data.password) {
+      if (data.role === ROLES.ADMIN) {
+        response.error(res, "Password wajib diisi untuk role admin", "validation error");
+        return;
+      }
+      data.password = "password123";
+    }
+
+    // Optional created_at ("YYYY-MM" or "YYYY-MM-DD"): warga sudah tinggal sejak bulan tersebut,
+    // iuran dibuat mulai dari bulan itu sampai bulan sekarang
+    let startYear: number | null = null;
+    let startMonth: number | null = null;
+    if (created_at) {
+      const match = String(created_at).match(/^(\d{4})-(\d{2})(-\d{2})?$/);
+      if (!match) {
+        response.error(
+          res,
+          "Format created_at tidak valid. Gunakan YYYY-MM atau YYYY-MM-DD",
+          "validation error"
+        );
+        return;
+      }
+      startYear = parseInt(match[1]);
+      startMonth = parseInt(match[2]);
+
+      const now = new Date();
+      if (
+        startMonth < 1 ||
+        startMonth > 12 ||
+        startYear > now.getFullYear() ||
+        (startYear === now.getFullYear() && startMonth > now.getMonth() + 1)
+      ) {
+        response.error(
+          res,
+          "created_at tidak boleh di masa depan atau bulan tidak valid",
+          "validation error"
+        );
+        return;
+      }
     }
 
     try {
@@ -76,19 +117,27 @@ export default {
       if (!createData.email) {
         delete createData.email; // Don't store empty email
       }
+      if (startYear && startMonth) {
+        // Override default createdAt so it reflects when the warga actually moved in
+        createData.createdAt = new Date(startYear, startMonth - 1, 1);
+      }
 
       const result = await userModel.create(createData) as any;
 
-      // Create iuran from current month until end of year if user is not ADMIN and is ACTIVE
+      // Create iuran from start month (created_at) or current month, up to current month only.
+      // Future months are handled by the monthly cron.
       if (result.role !== ROLES.ADMIN && result.status === USER_STATUS.ACTIVE) {
         const now = new Date();
         const currentYear = now.getFullYear();
         const currentMonth = now.getMonth() + 1; // 1-12
-        const iuranPromises = [];
 
-        // Create iuran from current month to December
-        for (let month = currentMonth; month <= 12; month++) {
-          const period = `${currentYear}-${String(month).padStart(2, "0")}`;
+        let year = startYear ?? currentYear;
+        let month = startMonth ?? currentMonth;
+        const iuranPromises = [];
+        const firstPeriod = `${year}-${String(month).padStart(2, "0")}`;
+
+        while (year < currentYear || (year === currentYear && month <= currentMonth)) {
+          const period = `${year}-${String(month).padStart(2, "0")}`;
           iuranPromises.push(
             iuranModel.create({
               user: result._id,
@@ -101,11 +150,16 @@ export default {
               confirmed_by: null,
             })
           );
+          month++;
+          if (month > 12) {
+            month = 1;
+            year++;
+          }
         }
 
         await Promise.all(iuranPromises);
         console.log(
-          `Created ${iuranPromises.length} months of iuran for user ${result.username} (${currentYear}-${String(currentMonth).padStart(2, "0")} to ${currentYear}-12)`
+          `Created ${iuranPromises.length} months of iuran for user ${result.username} (${firstPeriod} to ${currentYear}-${String(currentMonth).padStart(2, "0")})`
         );
       }
 
@@ -594,29 +648,25 @@ export default {
         console.log(`User ${user.username} status changed to ${status}, removed ${deleteResult.deletedCount} unpaid iuran records`);
       }
 
-      // If user becomes active from inactive/away/moved, create missing iuran for remaining months
+      // If user becomes active from inactive/away/moved, create iuran for current month only
+      // (future months are handled by the monthly cron)
       if (status === "active" && oldStatus !== "active") {
         const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth() + 1;
-
-        for (let month = currentMonth; month <= 12; month++) {
-          const period = `${currentYear}-${String(month).padStart(2, "0")}`;
-          const exists = await iuranModel.findOne({ user: id, period, type: "regular" });
-          if (!exists) {
-            await iuranModel.create({
-              user: id,
-              period,
-              amount: "50000",
-              type: "regular",
-              status: IURAN_STATUS.UNPAID,
-              submitted_at: null,
-              confirmed_at: null,
-              confirmed_by: null,
-            });
-          }
+        const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const exists = await iuranModel.findOne({ user: id, period, type: "regular" });
+        if (!exists) {
+          await iuranModel.create({
+            user: id,
+            period,
+            amount: "50000",
+            type: "regular",
+            status: IURAN_STATUS.UNPAID,
+            submitted_at: null,
+            confirmed_at: null,
+            confirmed_by: null,
+          });
         }
-        console.log(`User ${user.username} status changed to active, iuran ensured for remaining months`);
+        console.log(`User ${user.username} status changed to active, iuran ensured for current month`);
       }
 
       return response.success(res, updatedUser, "user status updated successfully");
@@ -661,31 +711,26 @@ export default {
         )
         .select("-password");
 
-      // Create iuran from current month to end of year
+      // Create iuran for current month only (future months are handled by the monthly cron)
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       let iuranCreated = 0;
 
-      for (let month = currentMonth; month <= 12; month++) {
-        const period = `${currentYear}-${String(month).padStart(2, "0")}`;
+      const exists = await iuranModel.findOne({
+        user: id,
+        period: period,
+        type: "regular",
+      });
 
-        const exists = await iuranModel.findOne({
+      if (!exists) {
+        await iuranModel.create({
           user: id,
           period: period,
+          amount: "50000",
           type: "regular",
+          status: IURAN_STATUS.UNPAID,
         });
-
-        if (!exists) {
-          await iuranModel.create({
-            user: id,
-            period: period,
-            amount: "50000",
-            type: "regular",
-            status: IURAN_STATUS.UNPAID,
-          });
-          iuranCreated++;
-        }
+        iuranCreated++;
       }
 
       console.log(
@@ -785,10 +830,9 @@ export default {
           rowData;
         const rowErrors: string[] = [];
 
-        // Validation: email required for non-warga roles
-        const isWargaRole = !role || role === ROLES.WARGA;
-        if (!isWargaRole && !email) {
-          rowErrors.push("Email wajib diisi untuk role selain warga");
+        // Validation: email required only for admin role
+        if (role === ROLES.ADMIN && !email) {
+          rowErrors.push("Email wajib diisi untuk role admin");
         } else if (email && !email.includes("@")) {
           rowErrors.push("Format email tidak valid");
         }
@@ -857,28 +901,20 @@ export default {
 
           const newUser = await userModel.create(userData) as any;
 
-          // Create iuran for non-admin users
+          // Create iuran for current month only (future months are handled by the monthly cron)
           if (newUser.role !== ROLES.ADMIN) {
-            const nextYear = new Date().getFullYear() + 1;
-            const iuranPromises = [];
-
-            for (let month = 1; month <= 12; month++) {
-              const period = `${nextYear}-${String(month).padStart(2, "0")}`;
-              iuranPromises.push(
-                iuranModel.create({
-                  user: newUser._id,
-                  period: period,
-                  amount: "50000",
-                  type: "regular",
-                  status: IURAN_STATUS.UNPAID,
-                  submitted_at: null,
-                  confirmed_at: null,
-                  confirmed_by: null,
-                })
-              );
-            }
-
-            await Promise.all(iuranPromises);
+            const now = new Date();
+            const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+            await iuranModel.create({
+              user: newUser._id,
+              period: period,
+              amount: "50000",
+              type: "regular",
+              status: IURAN_STATUS.UNPAID,
+              submitted_at: null,
+              confirmed_at: null,
+              confirmed_by: null,
+            });
           }
 
           results.success.push(`Baris ${rowNumber} (${email}): berhasil dibuat`);

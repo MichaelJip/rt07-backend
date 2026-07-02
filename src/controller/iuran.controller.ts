@@ -492,6 +492,36 @@ export default {
       return;
     }
   },
+  async cleanupFutureIuran(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const now = new Date();
+      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      // Delete only UNPAID regular iuran with period AFTER current month.
+      // Paid iuran (including advance payments) are preserved.
+      const result = await iuranModel.deleteMany({
+        type: "regular",
+        status: IURAN_STATUS.UNPAID,
+        period: { $gt: currentPeriod },
+      });
+
+      console.log(
+        `Cleanup future iuran: deleted ${result.deletedCount} unpaid iuran after period ${currentPeriod}`
+      );
+
+      return response.success(
+        res,
+        {
+          currentPeriod,
+          deletedCount: result.deletedCount,
+        },
+        `Successfully deleted ${result.deletedCount} unpaid iuran after period ${currentPeriod}`
+      );
+    } catch (error) {
+      response.error(res, error, "failed to cleanup future iuran");
+      return;
+    }
+  },
   async downloadTemplate(req: IReqUser, res: Response): Promise<void> {
     try {
       const buffer = await createIuranImportTemplate();
@@ -670,10 +700,10 @@ export default {
         return periods;
       };
 
-      // End period: December of current year
+      // End period: current month (future months are handled by the monthly cron)
       const now = new Date();
       const currentYear = now.getFullYear();
-      const endMonth = 12; // Always create until December
+      const endMonth = now.getMonth() + 1;
 
       // Get all existing users for matching
       const allUsers = await userModel.find({}).lean();
@@ -723,24 +753,8 @@ export default {
           console.log(`Looking for: "${row.nama}" at "${row.alamat}" -> found: ${!!user}`);
 
           if (!user) {
-            // Create new user
-            const username = row.nama
-              .toLowerCase()
-              .replace(/\s+/g, "_")
-              .replace(/[^a-z0-9_]/g, "");
-            const email = `${username}@warga.rt`;
-
-            // Check if email already exists (edge case)
-            const existingEmail = await userModel.findOne({
-              email: { $regex: new RegExp(`^${email}$`, "i") },
-            });
-
-            const finalEmail = existingEmail
-              ? `${username}_${Date.now()}@warga.rt`
-              : email;
-
+            // Create new user (warga: email boleh null, tidak perlu auto-generate)
             const newUser = await userModel.create({
-              email: finalEmail,
               username: row.nama,
               password: "password123",
               role: ROLES.WARGA,
