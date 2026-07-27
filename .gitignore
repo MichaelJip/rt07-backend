@@ -13,3 +13,6 @@ logs/
 .pm2/
 uploads/
 receipts/
+
+#Claude
+.claude
