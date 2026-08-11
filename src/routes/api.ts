@@ -87,6 +87,14 @@ router.post(
   iuranController.recordPayment
 );
 router.post(
+  "/iuran/revert-payment",
+  [
+    authMiddleware,
+    aclMiddleware([ROLES.ADMIN, ROLES.BENDAHARA, ROLES.SEKRETARIS]),
+  ],
+  iuranController.revertPayment
+);
+router.post(
   "/iuran/create-yearly",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   iuranController.createYearlyIuran

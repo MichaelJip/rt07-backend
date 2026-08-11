@@ -1,7 +1,7 @@
 # AGENTS.md — RT Backend
 
 Orientation doc for AI agents working in this repo. For deployment/ops, see
-[DEPLOYMENT.md](DEPLOYMENT.md) and [MAINTENANCE-GUIDE.md](MAINTENANCE-GUIDE.md).
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/MAINTENANCE-GUIDE.md](docs/MAINTENANCE-GUIDE.md).
 Keep this file updated when routes, models, or architecture change.
 
 ## Stack
@@ -103,6 +103,10 @@ Keep this file updated when routes, models, or architecture change.
 ## Notable endpoints (non-exhaustive — see [api.ts](src/routes/api.ts) for the full list)
 
 - `POST /iuran/advance-payment` — pay up to 2 years ahead (admin/bendahara/sekretaris).
+- `POST /iuran/revert-payment` — admin/bendahara/sekretaris; undo mistaken payments.
+  Body: `{ ids: string[] }` (Iuran document `_id`s, not periods). `regular` iuran are
+  reset to `unpaid` (slot stays, payment fields cleared); `custom` iuran are deleted
+  outright. Non-`paid` ids are skipped and reported in `errors`, not treated as fatal.
 - `DELETE /iuran/cleanup-future` — admin only; deletes unpaid *regular* iuran with
   period beyond the current month (paid/advance/custom untouched).
 - `PATCH|DELETE /event/:id/donation/:donationId`, `/event/:id/expense/:expenseId` —
@@ -128,3 +132,20 @@ The admin/user-management UI lives in a sibling repo, `rt07-frontend-website`
 (see working directories `lib/validations`, `components/admin/User`). Keep DTOs
 (`utils/zodSchema.ts`) and frontend validation schemas in sync when changing user/iuran
 shapes.
+
+## Changelog
+
+Log notable changes here — date, time, and what changed. Newest entry first.
+
+- **Selasa, 11 Agustus 2026, 21:47** — Merapikan dokumentasi: `DEPLOYMENT.md`,
+  `MAINTENANCE-GUIDE.md`, dan `backup-drive-guide.md` dipindah ke folder `docs/`
+  (pakai `git mv` agar history terjaga). `README.md` dan `AGENTS.md` tetap di root
+  supaya tetap ter-baca otomatis oleh GitHub/tools. Link referensi di baris atas
+  file ini diupdate mengikuti lokasi baru.
+- **Selasa, 11 Agustus 2026, 21:42** — Menambahkan `POST /iuran/revert-payment`
+  (`iuranController.revertPayment` di [iuran.controller.ts](src/controller/iuran.controller.ts),
+  route di [api.ts](src/routes/api.ts)) untuk membatalkan pembayaran iuran yang salah
+  input (mis. salah bayar beberapa bulan sekaligus). Terima `{ ids: string[] }`;
+  iuran `regular` di-reset ke `unpaid`, iuran `custom` dihapus. Tidak perlu update
+  field saldo manual — `getCurrentBalance()` menghitung ulang otomatis dari status
+  `paid`.

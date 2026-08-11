@@ -242,6 +242,87 @@ export default {
       return;
     }
   },
+  async revertPayment(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const actorId = req.user?.id;
+      if (!actorId) {
+        response.unauthorized(res, "unauthorized");
+        return;
+      }
+
+      const { ids } = req.body;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        response.error(
+          res,
+          "ids array is required (iuran document IDs to revert)",
+          "validation error"
+        );
+        return;
+      }
+
+      for (const id of ids) {
+        if (!mongoose.isValidObjectId(id)) {
+          response.error(res, `invalid iuran id: ${id}`, "validation error");
+          return;
+        }
+      }
+
+      const iuranRecords = await iuranModel.find({ _id: { $in: ids } });
+
+      const reverted: any[] = [];
+      const deleted: string[] = [];
+      const errors: string[] = [];
+
+      for (const iuran of iuranRecords) {
+        if (iuran.status !== IURAN_STATUS.PAID) {
+          errors.push(`Period ${iuran.period}: not marked as paid, skipped`);
+          continue;
+        }
+
+        if (iuran.type === "custom") {
+          // Custom (one-off) iuran doesn't represent a recurring monthly slot,
+          // so undoing the payment means removing the record entirely.
+          await iuranModel.findByIdAndDelete(iuran._id);
+          deleted.push(String(iuran._id));
+        } else {
+          // Regular monthly iuran slot must remain as an outstanding (unpaid) bill.
+          const result = await iuranModel.findByIdAndUpdate(
+            iuran._id,
+            {
+              status: IURAN_STATUS.UNPAID,
+              payment_date: null,
+              payment_method: null,
+              confirmed_at: null,
+              confirmed_by: null,
+              recorded_by: null,
+              note: null,
+              is_imported: false,
+            },
+            { new: true }
+          );
+          reverted.push(result);
+        }
+      }
+
+      return response.success(
+        res,
+        {
+          success: reverted.length + deleted.length,
+          reverted: reverted.length,
+          deleted: deleted.length,
+          failed: errors.length,
+          revertedIuran: reverted,
+          deletedIds: deleted,
+          errors: errors.length > 0 ? errors : null,
+        },
+        `Successfully reverted ${reverted.length + deleted.length} payment(s)`
+      );
+    } catch (error) {
+      response.error(res, error, "failed to revert payment");
+      return;
+    }
+  },
   async getStatusSummary(req: IReqUser, res: Response): Promise<void> {
     try {
       const { period } = req.params;
