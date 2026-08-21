@@ -947,23 +947,15 @@ export default {
   },
   async exportIuran(req: IReqUser, res: Response): Promise<void> {
     try {
-      const { startYear = 2020, endYear = new Date().getFullYear() + 1 } =
-        req.query;
-
       // Get all non-admin users
       const users = await userModel
         .find({ role: { $ne: ROLES.ADMIN } })
         .sort({ username: 1 })
         .lean();
 
-      // Get all iuran records within the year range
-      const startPeriod = `${startYear}-01`;
-      const endPeriod = `${endYear}-12`;
-
+      // Only export iuran that have actually been paid
       const iuranRecords = await iuranModel
-        .find({
-          period: { $gte: startPeriod, $lte: endPeriod },
-        })
+        .find({ status: IURAN_STATUS.PAID })
         .lean();
 
       // Create a map of user iuran: userId -> period -> iuran
@@ -980,18 +972,32 @@ export default {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("Data Iuran");
 
-      // Generate month columns
       const monthNames = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
       ];
 
+      // Derive month columns from the earliest to latest paid period present in the data
+      const allPeriods = iuranRecords.map((iuran: any) => iuran.period).sort();
+
       const monthColumns: { header: string; key: string; width: number }[] = [];
-      for (let y = Number(startYear); y <= Number(endYear); y++) {
-        for (let m = 1; m <= 12; m++) {
+      if (allPeriods.length > 0) {
+        const [startY, startM] = allPeriods[0].split("-").map(Number);
+        const [endY, endM] = allPeriods[allPeriods.length - 1]
+          .split("-")
+          .map(Number);
+
+        let y = startY;
+        let m = startM;
+        while (y < endY || (y === endY && m <= endM)) {
           const key = `${y}-${String(m).padStart(2, "0")}`;
           const header = `${monthNames[m - 1]}-${String(y).slice(-2)}`;
           monthColumns.push({ header, key, width: 10 });
+          m++;
+          if (m > 12) {
+            m = 1;
+            y++;
+          }
         }
       }
 
@@ -1032,10 +1038,7 @@ export default {
         const userIuran = iuranMap[user._id.toString()] || {};
 
         // Find earliest paid period as "Start"
-        const paidPeriods = Object.entries(userIuran)
-          .filter(([_, iuran]: [string, any]) => iuran.status === IURAN_STATUS.PAID)
-          .map(([period]) => period)
-          .sort();
+        const paidPeriods = Object.keys(userIuran).sort();
 
         if (paidPeriods.length > 0) {
           const firstPeriod = paidPeriods[0];
@@ -1046,7 +1049,7 @@ export default {
         // Add payment data for each month
         monthColumns.forEach((col) => {
           const iuran = userIuran[col.key];
-          if (iuran && iuran.status === IURAN_STATUS.PAID) {
+          if (iuran) {
             rowData[col.key] = Number(iuran.amount);
           }
         });
@@ -1056,7 +1059,7 @@ export default {
         // Highlight paid cells with green background
         monthColumns.forEach((col, colIndex) => {
           const iuran = userIuran[col.key];
-          if (iuran && iuran.status === IURAN_STATUS.PAID) {
+          if (iuran) {
             const cell = row.getCell(5 + colIndex); // 5 = offset for No, Nama, Alamat, Start columns
             cell.fill = {
               type: "pattern",

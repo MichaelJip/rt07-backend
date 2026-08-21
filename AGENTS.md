@@ -109,6 +109,9 @@ Keep this file updated when routes, models, or architecture change.
   outright. Non-`paid` ids are skipped and reported in `errors`, not treated as fatal.
 - `DELETE /iuran/cleanup-future` — admin only; deletes unpaid *regular* iuran with
   period beyond the current month (paid/advance/custom untouched).
+- `GET /iuran/export` — admin/bendahara/sekretaris; exports an Excel matrix (users ×
+  month) of all `paid` iuran only, no query params. Month columns are derived from the
+  earliest/latest paid period found in the data (not a fixed year range).
 - `PATCH|DELETE /event/:id/donation/:donationId`, `/event/:id/expense/:expenseId` —
   edit/remove event donations & expenses (kas re-checked if event already `completed`).
 - `GET|POST /dana-masuk`, `DELETE /dana-masuk/:id` — fund injection ledger (GET public).
@@ -137,6 +140,11 @@ shapes.
 
 Log notable changes here — date, time, and what changed. Newest entry first.
 
+- **Jumat, 21 Agustus 2026** — `GET /iuran/export` (`iuranController.exportIuran` di
+  [iuran.controller.ts](src/controller/iuran.controller.ts)) diubah dari filter
+  `startYear`/`endYear` (query params) jadi export semua iuran ber-status `paid`
+  langsung, tanpa params. Kolom bulan di worksheet diturunkan dari periode
+  paling awal/akhir yang ada di data, bukan lagi rentang tahun tetap.
 - **Selasa, 11 Agustus 2026, 21:47** — Merapikan dokumentasi: `DEPLOYMENT.md`,
   `MAINTENANCE-GUIDE.md`, dan `backup-drive-guide.md` dipindah ke folder `docs/`
   (pakai `git mv` agar history terjaga). `README.md` dan `AGENTS.md` tetap di root
