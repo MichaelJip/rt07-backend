@@ -12,8 +12,43 @@ export interface User extends Omit<TUser, ""> {}
 
 const Schema = mongoose.Schema;
 
+export interface FamilyMember {
+  _id?: mongoose.Types.ObjectId;
+  name: string;
+  birth_date: Date;
+  relation: string;
+}
+
+const familyMemberSchema = new Schema<FamilyMember>({
+  name: {
+    type: Schema.Types.String,
+    required: true,
+  },
+  birth_date: {
+    type: Schema.Types.Date,
+    required: true,
+  },
+  relation: {
+    // Free text, validated at the controller against the admin-configurable
+    // "family_relations" settings list (see settings.controller.ts) rather than
+    // a hardcoded enum here — RT wants to add relation types without a code change.
+    type: Schema.Types.String,
+    required: true,
+  },
+});
+
 const userSchema = new Schema(
   {
+    // Head of family's own date of birth (optional — backfilled data won't have it).
+    // Family members below are everyone else in the household.
+    birth_date: {
+      type: Schema.Types.Date,
+      default: null,
+    },
+    family_members: {
+      type: [familyMemberSchema],
+      default: [],
+    },
     email: {
       type: Schema.Types.String,
       required: false,

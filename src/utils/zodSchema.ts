@@ -23,6 +23,17 @@ export const UserDTO = z.object({
     .max(15, "Phone number too long")
     .optional(),
   image_url: z.string().optional(),
+  birth_date: z.string().optional(),
+});
+
+// A single household member (anyone in the KK other than the head, who is the User itself).
+export const FamilyMemberDTO = z.object({
+  name: z.string().min(1, "Name is required"),
+  birth_date: z.string().min(1, "Birth date is required"),
+  // References the `id` of an entry in the admin-configurable "family_relations"
+  // settings list (validated in the controller) — not the label, so renaming a
+  // relation's label later doesn't orphan existing family members.
+  relation: z.string().min(1, "Relation is required"),
 });
 
 export const UserLoginDTO = z.object({

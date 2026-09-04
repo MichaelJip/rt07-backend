@@ -4,15 +4,16 @@ import {
   UserLoginDTO,
   PushTokenDTO,
   UpdateProfileDTO,
+  FamilyMemberDTO,
 } from "../utils/zodSchema";
-import userModel, { User } from "../models/user.model";
+import userModel from "../models/user.model";
 import response from "../utils/response";
 import { encrypt } from "../utils/encryption";
 import { generateToken } from "../utils/jwt";
 import { SECRET } from "../utils/env";
 import jwt from "jsonwebtoken";
 import { IReqUser } from "../utils/interface";
-import mongoose, { QueryFilter } from "mongoose";
+import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import iuranModel from "../models/iuran.model";
@@ -22,6 +23,21 @@ import {
   createUserImportTemplate,
   exportUsersToExcel,
 } from "../utils/excelTemplate";
+import { getSettingValue, SETTINGS_KEYS } from "./settings.controller";
+import { ageRangeToBirthDateFilter } from "../utils/age";
+
+// family_members.relation stores a family_relations *id*, not the label — validates
+// against whatever the admin currently has configured in Settings.
+async function validateRelationId(relationId: string): Promise<string | null> {
+  const relations = await getSettingValue(SETTINGS_KEYS.FAMILY_RELATIONS, null);
+  if (!Array.isArray(relations)) return null; // nothing configured yet, don't block
+
+  const match = relations.some((r: { id: string }) => r.id === relationId);
+  if (match) return null;
+
+  const options = relations.map((r: { id: string; label: string }) => `${r.id} (${r.label})`).join(", ");
+  return `relation must be one of: ${options}`;
+}
 
 export default {
   async register(req: Request, res: Response): Promise<void> {
@@ -232,7 +248,7 @@ export default {
   },
   async findAll(req: IReqUser, res: Response): Promise<void> {
     try {
-      const { limit = 10, page = 1, search, status, includeDeleted, full } = req.query;
+      const { limit = 10, page = 1, search, status, includeDeleted, full, minAge, maxAge } = req.query;
 
       // ?full=true requires a valid auth token with privileged role
       const isFullRequest = full === "true";
@@ -257,7 +273,11 @@ export default {
         }
       }
 
-      let query: QueryFilter<User> = {};
+      // `any` here (not QueryFilter<User>): User's TS type is inferred from UserDTO
+      // (birth_date: string, no family_members), but the actual Mongoose schema stores
+      // birth_date as Date and has family_members — same "avoid TS friction" tradeoff
+      // as userModel.create(data) as any elsewhere in this file.
+      let query: any = {};
 
       // By default, exclude deleted users unless includeDeleted=true
       if (includeDeleted !== "true") {
@@ -271,11 +291,36 @@ export default {
 
       if (search && typeof search === "string") {
         const searchRegex = new RegExp(search, "i");
+        // A hit on any family member's name still returns the parent User doc — the
+        // household already ships as one record via family_members[], so searching
+        // either the kepala keluarga or one of their kids surfaces the same result.
         query.$or = [
           { username: searchRegex },
           { email: searchRegex },
           { address: searchRegex },
+          { "family_members.name": searchRegex },
         ];
+      }
+
+      // Age-range filter: matches either the head of household's own birth_date, or
+      // any family member's birth_date (household counts as a match if anyone in it
+      // falls in range — used for things like "berapa KK punya balita").
+      const birthDateFilter = ageRangeToBirthDateFilter(
+        minAge !== undefined ? Number(minAge) : undefined,
+        maxAge !== undefined ? Number(maxAge) : undefined
+      );
+      if (birthDateFilter) {
+        const ageOr = [
+          { birth_date: birthDateFilter },
+          { family_members: { $elemMatch: { birth_date: birthDateFilter } } },
+        ];
+        // Combine with any existing $or (search) via $and so both conditions apply.
+        if (query.$or) {
+          query.$and = [{ $or: query.$or }, { $or: ageOr }];
+          delete query.$or;
+        } else {
+          query.$or = ageOr;
+        }
       }
 
       const allResults = await userModel
@@ -550,7 +595,7 @@ export default {
         return;
       }
 
-      const { username, email, address, phone_number, role } = req.body;
+      const { username, email, address, phone_number, role, birth_date } = req.body;
       const image_url = req.file ? `/uploads/${req.file.filename}` : undefined;
 
       // Check username uniqueness if changing
@@ -586,6 +631,7 @@ export default {
       if (phone_number !== undefined) updateData.phone_number = phone_number;
       if (role !== undefined) updateData.role = role;
       if (image_url !== undefined) updateData.image_url = image_url;
+      if (birth_date !== undefined) updateData.birth_date = birth_date || null;
 
       const result = await userModel
         .findByIdAndUpdate(id, updateData, { new: true })
@@ -594,6 +640,121 @@ export default {
       return response.success(res, result, "user updated successfully");
     } catch (error) {
       response.error(res, error, "failed to update user");
+      return;
+    }
+  },
+
+  // Add one household member to a User's family_members[]. `relation` must be one of
+  // the admin-configurable options in Settings (family_relations) — keeps the reference
+  // list meaningful instead of becoming free-text drift.
+  async addFamilyMember(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!id || !mongoose.isValidObjectId(id)) {
+        response.error(res, "invalid user id", "validation error");
+        return;
+      }
+
+      const parsed = FamilyMemberDTO.safeParse(req.body);
+      if (!parsed.success) {
+        response.error(res, parsed.error, "validation error");
+        return;
+      }
+
+      const relationError = await validateRelationId(parsed.data.relation);
+      if (relationError) {
+        response.error(res, relationError, "validation error");
+        return;
+      }
+
+      const user = await userModel.findByIdAndUpdate(
+        id,
+        { $push: { family_members: parsed.data } },
+        { new: true }
+      ).select("-password");
+
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      return response.success(res, user, "family member added");
+    } catch (error) {
+      response.error(res, error, "failed to add family member");
+      return;
+    }
+  },
+
+  async updateFamilyMember(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id, memberId } = req.params;
+
+      if (!id || !mongoose.isValidObjectId(id) || !memberId || !mongoose.isValidObjectId(memberId)) {
+        response.error(res, "invalid user id or family member id", "validation error");
+        return;
+      }
+
+      const parsed = FamilyMemberDTO.partial().safeParse(req.body);
+      if (!parsed.success) {
+        response.error(res, parsed.error, "validation error");
+        return;
+      }
+
+      if (parsed.data.relation) {
+        const relationError = await validateRelationId(parsed.data.relation);
+        if (relationError) {
+          response.error(res, relationError, "validation error");
+          return;
+        }
+      }
+
+      const setFields: Record<string, any> = {};
+      if (parsed.data.name !== undefined) setFields["family_members.$.name"] = parsed.data.name;
+      if (parsed.data.birth_date !== undefined) setFields["family_members.$.birth_date"] = parsed.data.birth_date;
+      if (parsed.data.relation !== undefined) setFields["family_members.$.relation"] = parsed.data.relation;
+
+      const user = await userModel.findOneAndUpdate(
+        { _id: id, "family_members._id": memberId },
+        { $set: setFields },
+        { new: true }
+      ).select("-password");
+
+      if (!user) {
+        response.notFound(res, "user or family member not found");
+        return;
+      }
+
+      return response.success(res, user, "family member updated");
+    } catch (error) {
+      response.error(res, error, "failed to update family member");
+      return;
+    }
+  },
+
+  async deleteFamilyMember(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id, memberId } = req.params;
+
+      if (!id || !mongoose.isValidObjectId(id) || !memberId || !mongoose.isValidObjectId(memberId)) {
+        response.error(res, "invalid user id or family member id", "validation error");
+        return;
+      }
+
+      const user = await userModel.findByIdAndUpdate(
+        id,
+        { $pull: { family_members: { _id: memberId } } },
+        { new: true }
+      ).select("-password");
+
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      return response.success(res, user, "family member removed");
+    } catch (error) {
+      response.error(res, error, "failed to remove family member");
       return;
     }
   },

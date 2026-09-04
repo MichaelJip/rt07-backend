@@ -64,6 +64,22 @@ router.post(
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   authController.restoreUser
 );
+// Family members (kepala keluarga's household)
+router.post(
+  "/user/:id/family",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.addFamilyMember
+);
+router.patch(
+  "/user/:id/family/:memberId",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.updateFamilyMember
+);
+router.delete(
+  "/user/:id/family/:memberId",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.deleteFamilyMember
+);
 
 //Iuran
 router.get("/iuran", authMiddleware, iuranController.findAll);
@@ -307,6 +323,21 @@ router.patch(
   "/settings/initial-balance",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   settingsController.updateInitialBalance
+);
+// Family relation types (Suami/Istri/Anak/dll) — public read, any form with a relation
+// picker needs this; admin-only write
+router.get("/settings/family-relations", settingsController.getFamilyRelations);
+router.patch(
+  "/settings/family-relations",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  settingsController.updateFamilyRelations
+);
+// Age-bracket categories (Balita/Anak/Remaja/dll) used by demographic reports
+router.get("/settings/age-categories", settingsController.getAgeCategories);
+router.patch(
+  "/settings/age-categories",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  settingsController.updateAgeCategories
 );
 
 export default router;
