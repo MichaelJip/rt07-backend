@@ -43,6 +43,11 @@ router.get(
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],
   authController.exportUsers
 );
+router.get(
+  "/user/:id",
+  [authMiddleware, aclMiddleware([ROLES.ADMIN])],
+  authController.findOne
+);
 router.delete(
   "/user/:id",
   [authMiddleware, aclMiddleware([ROLES.ADMIN])],

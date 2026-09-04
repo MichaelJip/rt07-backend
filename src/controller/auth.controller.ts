@@ -534,6 +534,29 @@ export default {
       return;
     }
   },
+  // Single-user fetch for the admin edit page (full record, including family_members/
+  // birth_date — route is admin-only so no need for the ?full=true gate GET /user uses).
+  async findOne(req: IReqUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!id || !mongoose.isValidObjectId(id)) {
+        response.error(res, "invalid user id", "validation error");
+        return;
+      }
+
+      const user = await userModel.findById(id).select("-password");
+      if (!user) {
+        response.notFound(res, "user not found");
+        return;
+      }
+
+      return response.success(res, user, "success get user");
+    } catch (error) {
+      response.error(res, error, "failed to get user");
+      return;
+    }
+  },
   async deleteUser(req: IReqUser, res: Response): Promise<void> {
     try {
       const { id } = req.params;

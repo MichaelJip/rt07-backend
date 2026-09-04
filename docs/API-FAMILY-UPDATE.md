@@ -9,6 +9,17 @@ Base URL & auth header sama seperti [API-REFERENCE.md](API-REFERENCE.md): `Autho
 
 ---
 
+## GET /user/:id — baru, dipakai FE (halaman edit user full page)
+
+- Params: `id`. Tidak ada query/body.
+- Response: satu dokumen user lengkap (tanpa password) — termasuk `family_members` dan
+  `birth_date`, tidak ada gate `?full=true` di sini karena route-nya sendiri sudah
+  admin-only.
+- 404 kalau id tidak ada / tidak valid.
+- Auth: admin only.
+
+---
+
 ## Settings — khusus Postman, TIDAK ada di website
 
 Dua key setting baru, isinya dropdown reference data (bukan data warga). GET-nya publik
