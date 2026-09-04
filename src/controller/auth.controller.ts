@@ -98,6 +98,7 @@ export default {
     try {
       const existingUsername = await userModel.findOne({
         username: data.username,
+        isDeleted: { $ne: true },
       });
       if (existingUsername) {
         response.conflict(res, "Username is already taken");
@@ -106,7 +107,10 @@ export default {
 
       // Only check email uniqueness if email is provided
       if (data.email) {
-        const existingEmail = await userModel.findOne({ email: data.email });
+        const existingEmail = await userModel.findOne({
+          email: data.email,
+          isDeleted: { $ne: true },
+        });
         if (existingEmail) {
           response.conflict(res, "Email is already taken");
           return;
@@ -438,6 +442,7 @@ export default {
         const existingUser = await userModel.findOne({
           username: parsed.data.username,
           _id: { $ne: userId },
+          isDeleted: { $ne: true },
         });
 
         if (existingUser) {
@@ -555,7 +560,11 @@ export default {
 
       // Check username uniqueness if changing
       if (username && username !== user.username) {
-        const existing = await userModel.findOne({ username, _id: { $ne: id } });
+        const existing = await userModel.findOne({
+          username,
+          _id: { $ne: id },
+          isDeleted: { $ne: true },
+        });
         if (existing) {
           response.conflict(res, "Username is already taken");
           return;
@@ -564,7 +573,11 @@ export default {
 
       // Check email uniqueness if changing
       if (email && email !== user.email) {
-        const existing = await userModel.findOne({ email, _id: { $ne: id } });
+        const existing = await userModel.findOne({
+          email,
+          _id: { $ne: id },
+          isDeleted: { $ne: true },
+        });
         if (existing) {
           response.conflict(res, "Email is already taken");
           return;
@@ -874,8 +887,13 @@ export default {
         }
 
         // Check for existing user
-        const existingEmail = email ? await userModel.findOne({ email }) : null;
-        const existingUsername = await userModel.findOne({ username });
+        const existingEmail = email
+          ? await userModel.findOne({ email, isDeleted: { $ne: true } })
+          : null;
+        const existingUsername = await userModel.findOne({
+          username,
+          isDeleted: { $ne: true },
+        });
 
         if (existingEmail || existingUsername) {
           const skipReason = [];

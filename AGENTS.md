@@ -136,9 +136,83 @@ The admin/user-management UI lives in a sibling repo, `rt07-frontend-website`
 (`utils/zodSchema.ts`) and frontend validation schemas in sync when changing user/iuran
 shapes.
 
+## Planned updates — family/KK, area report, event savings (not yet implemented)
+
+Design decided 4 Sep 2026 (Jumat, 4 September 2026), implementation not started. Move each
+piece into "Domain models" / "Notable endpoints" / Changelog once it actually ships, and
+delete the corresponding bullet here.
+
+### 1. Family members / kepala keluarga
+- Each existing `User` (warga) doc *is* the kepala keluarga — no separate head-of-family
+  designation needed.
+- Add `family_members: [{ name, birth_date, relation, ... }]` as an embedded subdocument
+  array directly on `User` (same embedded-array pattern as `Event.donations[]`/
+  `expenses[]`), not a separate collection.
+- `relation` is **not** a hardcoded enum — it's admin-configurable reference data (mirrors
+  real KK/Kartu Keluarga categories: suami, istri, anak, mertua, kerabat, etc., and RT
+  wants to be able to add more without a code change). Same treatment for age-bracket
+  categories used in reporting (item 2 below) — both are small reference lists an admin
+  manages, not values baked into the schema/enum.
+- `age` derived from `birth_date` at read time (virtual/computed), never stored.
+- Age-range filtering (e.g. `?minAge=&maxAge=`) is a query filter over `family_members`
+  ages — for RT programs that need counts like balita/lansia.
+- **Search must match family members, not just the head of household.** Searching "Adi"
+  (a child) and searching "Michael" (the parent/kepala keluarga) must both surface the
+  same household. Extend the existing user-search query with an `$or` on
+  `family_members.name` alongside the current fields (username/address) — a match inside
+  `family_members` still returns the parent `User` doc, which already carries the full
+  `family_members[]`, so no extra shaping needed on the response side.
+- **`family_members` are never billed.** `Iuran` generation/counting stays keyed on
+  `User` only and is completely unaffected by household size — family members are
+  informational, not billable entities. Don't let iuran logic scale with
+  `family_members.length`.
+- Open question (defaulted, confirm before building): is `family_members` privileged-only
+  like `email`, or exposed on public `GET /user`? Default assumption: privileged-only.
+
+### 2. Laporan luar daerah vs dalam daerah (patokan Kota Tangerang)
+- Computed at report/export time, **not a stored field** — classify by matching `address`
+  against "Kota Tangerang" (case-insensitive substring). Mirrors how `GET /iuran/export`
+  already derives report shape from live data instead of persisting derived fields.
+- Scope: `isDeleted: { $ne: true }`, `status != MOVED` (moved users stay in the DB but drop
+  out of this report). `ACTIVE` and `AWAY` included. `INACTIVE` (rumah kosong, no resident)
+  excluded by default — confirm if that's wrong.
+- Implementation: new export endpoint following the existing `excelReportGenerator`
+  pattern used by `iuran.controller.ts`.
+
+### 3. Event savings ("tabungan acara" — trip/long-term savings, separate from donation-based Event)
+- New dedicated model, *not* an extension of `event.model.ts` — keeps the existing
+  one-off donation/expense Event flow untouched. Working name: `Tabungan` /
+  `EventTabungan` (avoid colliding with the existing `Event` model name). Optional
+  `linked_event_id` reserved for future integration into the Event section — not required
+  at launch.
+- Structure (mirrors `Event`'s embedded-array + pre-save total pattern):
+  - `title`, `description`, `event_date` (nullable until finalized), `status`
+    (`planning|active|completed`), `created_by`.
+  - `participants: [{ user (ref User), goal_amount, total_saved (computed), joined_at,
+    contributions: [{ amount, date, note, recorded_by (ref User), updated_by, updatedAt }]
+    }]`.
+  - `total_saved` recalculated in a pre-save hook, same approach as
+    `Event.total_donations`.
+- Participant = a `User` (the KK), not an individual family member — avoids ambiguity
+  about whether a goal multiplies by household size. `goal_amount` is set per participant
+  by the admin managing the event; actual contributions are free-form amounts (whatever
+  the resident hands over), unlike the fixed monthly slots `Iuran` uses.
+- Every contribution records `recorded_by`; edits/deletes record `updated_by`/`updatedAt`
+  for traceability (same audit spirit as `revert-payment`).
+- Public: list + detail (slug-based, like `/event/slug/:slug`) shows participants and each
+  one's `total_saved` vs `goal_amount`. Individual contribution line items stay
+  admin-only by default — confirm before launch if the public view should show the full
+  ledger instead of just totals.
+
 ## Changelog
 
 Log notable changes here — date, time, and what changed. Newest entry first.
+
+- **Jumat, 4 September 2026** — Fix: user yang di-soft-delete (`isDeleted: true`) tetap
+  mengunci username/email-nya sehingga tidak bisa dipakai ulang. Ditambahkan filter
+  `isDeleted: { $ne: true }` ke semua pengecekan uniqueness username/email di
+  [auth.controller.ts](src/controller/auth.controller.ts): `register`, `updateProfile`,
+  `updateUser`, dan `importUsers` (4 titik, bukan cuma `register`).
 
 - **Jumat, 21 Agustus 2026** — `GET /iuran/export` (`iuranController.exportIuran` di
   [iuran.controller.ts](src/controller/iuran.controller.ts)) diubah dari filter
